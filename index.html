@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendario de Proyectos</title>
+    <link rel="stylesheet" href="./css/styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-left">
+                <h1>Calendario de Proyectos</h1>
+                <div class="view-switcher">
+                    <div class="view-switcher">
+                        <button id="btn-view-year" class="btn active" data-view="year">Año natural</button>
+                        <button id="btn-view-rolling" class="btn" data-view="rolling">Año vista</button>
+                        <button id="btn-view-month" class="btn" data-view="month">Vista Mensual</button>
+                    </div>
+                </div>
+
+                <div class="header-controls">
+                    <button id="btn-config" class="btn btn-secondary">⚙ Configurar</button>
+                    <div class="filter-group">
+                        <!-- Multi-select containers -->
+                        <div class="multi-select" id="ms-project">
+                            <button class="ms-btn" type="button">Filtrar Proyectos ▾</button>
+                            <div class="ms-dropdown" id="ms-list-project">
+                                <!-- JS injected -->
+                            </div>
+                        </div>
+
+                        <div class="multi-select" id="ms-person">
+                            <button class="ms-btn" type="button">Filtrar Responsables ▾</button>
+                            <div class="ms-dropdown" id="ms-list-person">
+                                <!-- JS injected -->
+                            </div>
+                        </div>
+
+                        <div class="multi-select" id="ms-executor">
+                            <button class="ms-btn" type="button">Filtrar Asignados ▾</button>
+                            <div class="ms-dropdown" id="ms-list-executor">
+                                <!-- JS injected -->
+                            </div>
+                        </div>
+                    </div>
+                    <button id="btn-new-project" class="btn btn-secondary">+ Nuevo Proyecto</button>
+                    <button id="btn-new-task" class="btn btn-primary">+ Nueva Tarea</button>
+                </div>
+        </header>
+
+        <main id="calendar-container" class="calendar-container">
+            <!-- Calendar will be rendered here -->
+        </main>
+    </div>
+
+    <!-- Custom Tooltip -->
+    <div id="app-tooltip" class="app-tooltip" style="display: none;"></div>
+
+    <!-- Context Menu -->
+    <div id="context-menu" class="context-menu" style="display: none;">
+        <div class="menu-item" data-action="edit">Editar</div>
+        <div class="menu-item" data-action="move">Mover a...</div>
+        <div class="menu-item" data-action="delete" style="color: var(--danger);">Eliminar</div>
+    </div>
+
+    <!-- Modal: Move Task -->
+    <dialog id="modal-move-task" class="modal">
+        <form id="form-move-task">
+            <h2>Mover Tarea</h2>
+            <input type="hidden" id="move-task-id">
+            <p style="margin-bottom: 1rem; color: var(--text-muted);">Selecciona la nueva fecha de inicio. La duración
+                se mantendrá.</p>
+
+            <div class="form-group">
+                <label for="move-task-date">Nueva Fecha Inicio</label>
+                <input type="date" id="move-task-date" required>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-text" id="btn-cancel-move">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Mover</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Modal: New Task -->
+    <dialog id="modal-task" class="modal">
+        <form id="form-task">
+            <h2>Gestión de Tarea</h2>
+            <input type="hidden" id="task-id">
+
+            <div class="form-group">
+                <label for="task-desc">Descripción</label>
+                <input type="text" id="task-desc" required placeholder="Descripción de la tarea">
+            </div>
+
+            <div class="form-group">
+                <label for="task-comments">Comentarios</label>
+                <textarea id="task-comments" rows="3" placeholder="Detalles adicionales..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="task-location">Localización</label>
+                <input type="text" id="task-location" placeholder="Ej: Sala de Reuniones / Oficina Central">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="task-start">Fecha Inicio</label>
+                    <input type="date" id="task-start" required>
+                </div>
+                <div class="form-group">
+                    <label for="task-end">Fecha Fin</label>
+                    <input type="date" id="task-end" required>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="task-project">Proyecto</label>
+                    <select id="task-project" required>
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="task-assignee">Responsable</label>
+                    <select id="task-assignee" required>
+                        <!-- Populated dynamically from People -->
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="task-executor">Asignado a (Ejecutor)</label>
+                <select id="task-executor">
+                    <option value="">-- Seleccionar --</option>
+                    <!-- Populated dynamically from Executors -->
+                </select>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-text" id="btn-cancel-task">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar Tarea</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Modal: New Project -->
+    <dialog id="modal-project" class="modal">
+        <form id="form-project">
+            <h2>Nuevo Proyecto</h2>
+
+            <div class="form-group">
+                <input type="hidden" id="project-id">
+                <label for="project-name">Nombre del Proyecto</label>
+                <input type="text" id="project-name" required placeholder="Ej: Migración ERP">
+            </div>
+
+            <div class="form-group">
+                <label for="project-color">Color</label>
+                <input type="color" id="project-color" value="#3b82f6" required>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-text" id="btn-cancel-project">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Crear Proyecto</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Modal: Configuration -->
+    <dialog id="modal-config" class="modal modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Configuración</h2>
+                <button id="btn-close-config" class="btn-icon">✕</button>
+            </div>
+
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="config-people">Responsables</button>
+                <button class="tab-btn" data-tab="config-executors">Ejecutores</button>
+                <button class="tab-btn" data-tab="config-projects">Proyectos</button>
+                <button class="tab-btn" data-tab="config-export">Exportar CSV</button>
+                <button class="tab-btn" data-tab="config-backup">Copia Seguridad</button>
+            </div>
+
+            <div class="tab-content active" id="config-people">
+                <div class="config-actions">
+                    <form id="form-add-person" class="inline-form">
+                        <input type="text" id="new-person-name" placeholder="Nuevo responsable..." required>
+                        <button type="submit" class="btn btn-primary">Añadir</button>
+                    </form>
+                </div>
+                <div class="list-container" id="list-people">
+                    <!-- List of people -->
+                </div>
+            </div>
+
+            <div class="tab-content" id="config-executors">
+                <div class="config-actions">
+                    <form id="form-add-executor" class="inline-form">
+                        <input type="text" id="new-executor-name" placeholder="Nuevo ejecutor..." required>
+                        <button type="submit" class="btn btn-primary">Añadir</button>
+                    </form>
+                </div>
+                <div class="list-container" id="list-executors">
+                    <!-- List of executors -->
+                </div>
+            </div>
+
+            <div class="tab-content" id="config-projects">
+                <!-- Projects are managed here too mainly for deletion/color editing -->
+                <div class="config-actions">
+                    <!-- Adding project is handled by the other modal usually, but we can access it here or just list them for deletion -->
+                    <p class="text-sm">Para añadir proyectos, usa el botón "+ Nuevo Proyecto" en la cabecera.</p>
+                </div>
+                <div class="list-container" id="list-projects">
+                    <!-- List of projects -->
+                </div>
+            </div>
+
+            <div class="tab-content" id="config-export">
+                <div class="config-actions" style="flex-direction: column; align-items: flex-start; gap: 1rem;">
+                    <p class="text-sm">Selecciona los filtros para exportar tus tareas a CSV.</p>
+
+                    <div class="form-group" style="width: 100%;">
+                        <label for="export-project">Filtrar por Proyecto:</label>
+                        <select id="export-project" style="width: 100%; padding: 0.5rem;">
+                            <option value="all">Todos</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="width: 100%;">
+                        <label for="export-person">Filtrar por Persona:</label>
+                        <select id="export-person" style="width: 100%; padding: 0.5rem;">
+                            <option value="all">Todas</option>
+                        </select>
+                    </div>
+
+                    <button id="btn-do-export" class="btn btn-primary" style="align-self: flex-end;">Exportar a
+                        CSV</button>
+                </div>
+            </div>
+
+            <div class="tab-content" id="config-backup">
+                <div class="config-actions" style="flex-direction: column; align-items: flex-start; gap: 1rem;">
+                    <p class="text-sm">Guarda todos los datos (proyectos, personas, tareas) en un archivo local para no
+                        perderlos.</p>
+
+                    <div
+                        style="display:flex; gap:1rem; width:100%; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:1rem;">
+                        <div>
+                            <strong>Guardar Copia</strong><br>
+                            <span class="text-muted" style="font-size:0.85rem">Descarga un archivo .json con todos los
+                                datos.</span>
+                        </div>
+                        <button id="btn-backup-download" class="btn btn-primary">Descargar Datos</button>
+                    </div>
+
+                    <div
+                        style="display:flex; gap:1rem; width:100%; justify-content:space-between; align-items:center; padding-top:1rem;">
+                        <div>
+                            <strong>Restaurar Copia</strong><br>
+                            <span class="text-muted" style="font-size:0.85rem">Carga un archivo .json previamente
+                                guardado.</span>
+                        </div>
+                        <input type="file" id="backup-file-input" accept=".json" style="display:none">
+                        <button id="btn-backup-restore" class="btn btn-secondary">Cargar Archivo...</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Load scripts sequentially (Order matters!) -->
+    <script src="./js/utils.js?v=revert"></script>
+    <script src="./js/store.js?v=revert"></script>
+    <script src="./js/viewMonth.js?v=revert"></script>
+    <script src="./js/viewYear.js?v=revert"></script>
+    <script src="./js/app.js?v=revert"></script>
+</body>
+
+</html>
