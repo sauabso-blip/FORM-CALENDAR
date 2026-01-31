@@ -1,0 +1,816 @@
+:root {
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --bg-app: #f3f4f6;
+    --bg-panel: #ffffff;
+    --text-main: #1f2937;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+    --danger: #ef4444;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-app);
+    color: var(--text-main);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+/* Header */
+.app-header {
+    background: var(--bg-panel);
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+}
+
+.header-left h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.view-switcher {
+    display: flex;
+    background: var(--bg-app);
+    padding: 0.25rem;
+    border-radius: 0.5rem;
+}
+
+.view-switcher .btn {
+    border: none;
+    background: transparent;
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.view-switcher .btn.active {
+    background: var(--bg-panel);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    color: var(--primary);
+}
+
+.header-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.filter-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+select {
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    background: var(--bg-panel);
+    font-size: 0.875rem;
+}
+
+/* Buttons */
+.btn {
+    cursor: pointer;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background-color: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+}
+
+.btn-secondary {
+    background-color: white;
+    border-color: var(--border);
+    color: var(--text-main);
+}
+
+.btn-secondary:hover {
+    background-color: var(--bg-app);
+}
+
+.btn-text {
+    background: transparent;
+    color: var(--text-muted);
+}
+
+.btn-text:hover {
+    color: var(--text-main);
+}
+
+.btn-icon {
+    background: transparent;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.btn-sm-danger {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    background-color: #fee2e2;
+    color: var(--danger);
+    border-radius: 0.25rem;
+}
+
+.btn-sm-danger:hover {
+    background-color: #fecaca;
+}
+
+/* Main Main */
+.calendar-container {
+    flex: 1;
+    overflow: auto;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    /* Disable text selection */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+/* While dragging, disable pointer events on tasks so drops fall through to cells */
+.calendar-container.dragging .month-task-item {
+    pointer-events: none;
+}
+
+/* Calendar Views General */
+.year-view,
+.month-view {
+    background: var(--bg-panel);
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Modals */
+.modal {
+    margin: auto;
+    padding: 0;
+    border: none;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    max-width: 500px;
+    width: 90%;
+}
+
+.modal-lg {
+    max-width: 700px;
+}
+
+.modal::backdrop {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.modal form:not(.inline-form) {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.modal-content {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: 80vh;
+}
+
+.modal-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal h2 {
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.form-group label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.form-group input,
+.form-group select {
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    font-size: 1rem;
+}
+
+.form-row {
+    display: flex;
+    gap: 1rem;
+}
+
+.form-row .form-group {
+    flex: 1;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: #f9fafb;
+    padding: 0 1rem;
+}
+
+.tab-btn {
+    padding: 0.75rem 1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.tab-btn.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.tab-content {
+    display: none;
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Config Lists */
+.config-actions {
+    margin-bottom: 1rem;
+}
+
+.inline-form {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.inline-form input {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+}
+
+.list-container {
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    overflow: hidden;
+}
+
+.list-item {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+}
+
+.list-item:last-child {
+    border-bottom: none;
+}
+
+.list-item-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.color-dot {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* Month View Specifics */
+.month-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    flex: 1;
+}
+
+.month-header-cell {
+    padding: 0.75rem;
+    text-align: center;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-app);
+}
+
+.month-cell {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    min-height: 120px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.month-cell.other-month {
+    background: #f9fafb;
+    color: var(--text-muted);
+}
+
+.month-cell-header {
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    text-align: right;
+}
+
+/* Year View Specifics */
+.year-view-container {
+    overflow-x: auto;
+    padding: 1rem;
+}
+
+.year-grid {
+    display: flex;
+    flex-direction: column;
+}
+
+.year-months-header {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+}
+
+.year-month-label {
+    flex: 1;
+    min-width: 100px;
+    text-align: center;
+    padding: 0.5rem;
+    font-weight: 600;
+    border-right: 1px solid var(--border);
+}
+
+.year-row {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    min-height: 40px;
+    /* Allow growth */
+    height: auto;
+    /* align-items: center;  <-- Removing this to allow height growth */
+}
+
+.year-row:hover {
+    background-color: #f9fafb;
+}
+
+.year-row-label {
+    width: 150px;
+    flex-shrink: 0;
+    padding: 0.5rem;
+    font-weight: 500;
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    position: sticky;
+    left: 0;
+    background: var(--bg-panel);
+    z-index: 10;
+
+    /* Center text vertically even if row grows? Or top align? */
+    display: flex;
+    align-items: center;
+}
+
+.task-item {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    color: white;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Tooltip or generic task style */
+.task-bar {
+    position: absolute;
+    height: 24px;
+    border-radius: 4px;
+    top: 8px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    color: white;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    z-index: 1;
+}
+
+.task-bar:hover {
+    filter: brightness(1.1);
+    z-index: 2;
+}
+
+/* Task in Month View */
+.month-task-item {
+    font-size: 0.75rem;
+    padding: 2px 4px;
+    border-radius: 3px;
+    background: var(--primary);
+    color: white;
+    margin-bottom: 2px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Context Menu */
+.context-menu {
+    position: absolute;
+    background: white;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border-radius: 6px;
+    z-index: 1000;
+    min-width: 120px;
+    overflow: hidden;
+}
+
+.menu-item {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.menu-item:hover {
+    background-color: var(--bg-hover);
+}
+
+/* Year View Strict Grid */
+.year-days-container {
+    flex: 1;
+    display: flex;
+    /* Uses Flexbox to distribute 31 items evenly */
+    height: 100%;
+    border-left: 1px solid var(--border);
+    position: relative;
+    /* For absolute task bars */
+}
+
+.year-day-header,
+.year-day-cell {
+    flex: 1;
+    /* Each gets 1/31 width */
+    border-right: 1px solid #f0f0f0;
+    height: 100%;
+    min-width: 0;
+    /* allows shrinking */
+}
+
+.year-day-header {
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: #f9fafb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.year-day-cell.weekend {
+    background-color: #e5e7eb;
+    /* Grey for weekends */
+}
+
+.year-day-cell.invalid-day {
+    background-color: #000000;
+    opacity: 0.8;
+}
+
+.header-row {
+    height: 30px;
+    background: #f9fafb;
+    border-bottom: 2px solid var(--border);
+}
+
+/* Custom Tooltip */
+.app-tooltip {
+    position: absolute;
+    background: rgba(30, 41, 59, 0.95);
+    color: white;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.85rem;
+    z-index: 2000;
+    pointer-events: none;
+    /* Let mouse pass through */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    max-width: 300px;
+    line-height: 1.4;
+}
+
+.tooltip-title {
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+    color: #60a5fa;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 0.2rem;
+}
+
+.tooltip-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.1rem;
+}
+
+.tooltip-label {
+    color: #94a3b8;
+    min-width: 60px;
+}
+
+/* Multi-select Styles */
+.multi-select {
+    position: relative;
+    display: inline-block;
+}
+
+.ms-btn {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    background: var(--bg-panel);
+    font-size: 0.875rem;
+    cursor: pointer;
+    min-width: 160px;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ms-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 200px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.ms-dropdown.show {
+    display: block;
+}
+
+.ms-option {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+}
+
+.ms-option:hover {
+    background: #f3f4f6;
+}
+
+/* Legend in Year View */
+.year-legend {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 0.8rem;
+    padding-left: 1rem;
+    border-left: 1px solid var(--border);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+}
+
+/* --- Configuration Modal Styles (Drag & Top Tabs) --- */
+/* Overlay transparent to allow interaction if needed, but standard is blocking.
+   However, user asked for draggable. If draggable, overlay might block underlying app.
+   Standard modal behavior with drag usually keeps overlay. */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    display: flex;
+    /* justify-content: center; align-items: center; REMOVED to allow manual pos */
+}
+
+/* Modal Content is the draggable element */
+#config-modal .modal-content {
+    position: absolute; /* Absolute for dragging */
+    background: var(--bg-panel);
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    width: 700px; /* Wider for top tabs */
+    max-width: 95vw;
+    height: 600px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    /* Default centering handled by JS or CSS fallback */
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+#config-modal .modal-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move; /* Indicate draggable */
+    background: #f3f4f6; /* Slight bg for header distinction */
+    border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.config-container {
+    display: flex;
+    flex-direction: column; /* Top to Bottom layout for tabs */
+    flex: 1;
+    overflow: hidden;
+}
+
+.config-tabs-nav {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: white;
+}
+
+.config-tab-btn {
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.config-tab-btn:hover {
+    background: var(--bg-app);
+    color: var(--text-main);
+}
+
+.config-tab-btn.active {
+    background: var(--primary);
+    color: white;
+}
+
+.config-main {
+    flex: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+/* Config List items with Edit inputs */
+.config-item-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    background: white;
+}
+
+.config-item-row input[type="text"] {
+    border: 1px solid transparent;
+    background: transparent;
+    font-size: 1rem;
+    padding: 0.25rem;
+    flex: 1;
+}
+
+.config-item-row input[type="text"]:focus {
+    border-color: var(--primary);
+    background: white;
+    outline: none;
+}
+
+.config-item-row input[type="color"] {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 0;
+    margin-right: 0.5rem;
+}
+
+.config-item-row .actions {
+    display: flex;
+    gap: 0.5rem;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.config-item-row:hover .actions {
+    opacity: 1;
+}
+
+.config-item-row.add-row {
+    background: #f9fafb;
+    border: 1px dashed var(--border);
+    margin-bottom: 1rem;
+    border-radius: 4px;
+}
+
+.config-item-row.add-row input {
+    background: white;
+    border: 1px solid var(--border);
+}
