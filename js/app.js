@@ -189,6 +189,9 @@ class App {
     }
 
     switchView(view) {
+        if (view === 'year' || view === 'rolling') {
+            this.state.currentDate = new Date();
+        }
         this.state.currentView = view;
         this.render();
     }
