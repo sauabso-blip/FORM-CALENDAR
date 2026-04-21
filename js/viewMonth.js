@@ -19,7 +19,68 @@ class MonthView {
         const month = this.state.currentDate.getMonth();
         this.container.innerHTML = ''; // Clear previous content
 
-        // You could add a header for month/year selection here if needed
+        // Add Header with controls
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.marginBottom = '1rem';
+        header.style.background = 'var(--bg-panel)';
+        header.style.padding = '0.5rem 1rem';
+        header.style.borderRadius = '0.5rem';
+        header.style.border = '1px solid var(--border)';
+
+        const btnPrev = document.createElement('button');
+        btnPrev.className = 'btn btn-secondary';
+        btnPrev.innerHTML = '&#8592; Anterior';
+        btnPrev.onclick = () => {
+             this.state.currentDate.setMonth(this.state.currentDate.getMonth() - 1);
+             this.render();
+        };
+
+        const datePicker = document.createElement('input');
+        datePicker.type = 'month';
+        datePicker.style.padding = '0.5rem';
+        datePicker.style.border = '1px solid var(--border)';
+        datePicker.style.borderRadius = '0.375rem';
+        datePicker.style.fontFamily = 'inherit';
+        datePicker.value = `${year}-${String(month + 1).padStart(2, '0')}`;
+        datePicker.onchange = (e) => {
+             if (e.target.value) {
+                 const [y, m] = e.target.value.split('-');
+                 this.state.currentDate.setFullYear(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+                 this.render();
+             }
+        };
+
+        const btnToday = document.createElement('button');
+        btnToday.className = 'btn btn-primary';
+        btnToday.textContent = 'Mes Actual';
+        btnToday.style.marginLeft = '10px';
+        btnToday.onclick = () => {
+             this.state.currentDate = new Date();
+             this.render();
+        };
+
+        const btnNext = document.createElement('button');
+        btnNext.className = 'btn btn-secondary';
+        btnNext.innerHTML = 'Siguiente &#8594;';
+        btnNext.onclick = () => {
+             this.state.currentDate.setMonth(this.state.currentDate.getMonth() + 1);
+             this.render();
+        };
+
+        const centerDiv = document.createElement('div');
+        centerDiv.style.display = 'flex';
+        centerDiv.style.alignItems = 'center';
+        centerDiv.appendChild(datePicker);
+        centerDiv.appendChild(btnToday);
+
+        header.appendChild(btnPrev);
+        header.appendChild(centerDiv);
+        header.appendChild(btnNext);
+
+        this.container.appendChild(header);
 
         const grid = document.createElement('div');
         grid.className = 'month-grid';
