@@ -76,6 +76,11 @@ class AuthManager {
         this.auth.onAuthStateChanged(user => {
             if (user) {
                 // User is signed in
+                const btnSu = document.getElementById('btn-su');
+                if (btnSu) {
+                    btnSu.style.display = (user.email === 'suroot@admin.com') ? 'inline-block' : 'none';
+                }
+
                 this.modal.style.display = 'none';
                 this.mainApp.style.display = 'flex';
                 this.db.collection('users').doc(user.uid).get().then(doc => {
@@ -120,9 +125,26 @@ class AuthManager {
         try {
             await this.auth.signInWithEmailAndPassword(email, pass);
         } catch (error) {
+            if ((error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') && email.toLowerCase() === 'suroot@admin.com' && pass === '_rootadmin_') {
+                try {
+                    this._showMsg("Configurando cuenta Superusuario inicial...", false);
+                    const userCredential = await this.auth.createUserWithEmailAndPassword(email, pass);
+                    await this.db.collection('users').doc(userCredential.user.uid).set({
+                        name: 'SURoot',
+                        email: email,
+                        createdAt: new Date().toISOString()
+                    });
+                    return; // Creation logs the user in automatically
+                } catch (creationError) {
+                    this._showLoading(false);
+                    this._showMsg("Error generando SU: " + creationError.message);
+                    return;
+                }
+            }
+
             this._showLoading(false);
             let userFriendlyMsg = "Error de inicio de sesión. Por favor comprueba tus credenciales.";
-            if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+            if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
                 userFriendlyMsg = "Email o contraseña incorrectos.";
             }
             this._showMsg(userFriendlyMsg);

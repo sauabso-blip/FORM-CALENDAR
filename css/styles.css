@@ -875,6 +875,26 @@ select {
     font-size: 0.9rem;
 }
 
+/* --- Admin Table Styles --- */
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+    text-align: left;
+    color: var(--text-main);
+}
+.admin-table th, .admin-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+.admin-table th {
+    background: rgba(0,0,0,0.05);
+    font-weight: 600;
+}
+.admin-table tbody tr:hover {
+    background: rgba(255,255,255,0.5);
+}
+
 /* --- Mobile Responsiveness --- */
 @media (max-width: 768px) {
     #config-modal .modal-content {
