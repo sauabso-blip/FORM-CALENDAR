@@ -752,6 +752,14 @@ select {
     color: white;
 }
 
+.config-tab-content {
+    display: none;
+}
+
+.config-tab-content.active {
+    display: block;
+}
+
 .config-main {
     flex: 1;
     padding: 1.5rem;
