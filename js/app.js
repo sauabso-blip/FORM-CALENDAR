@@ -13,11 +13,17 @@ class App {
         this._bindDataEvents();
         this._initConfigModal();
 
-        // Initialize store and then set up initial filters
+        this.initialized = false;
+        // The store initialization is now driven by auth.js
+    }
+
+    initAfterAuth() {
+        if (this.initialized) return;
         this.store.initialize(() => {
-            console.log("Store inicializado. Estableciendo filtros iniciales...");
+            console.log("Store inicializado post-auth. Estableciendo filtros iniciales...");
             this._initializeFilters();
             this.render();
+            this.initialized = true;
         });
     }
 
@@ -652,7 +658,7 @@ class App {
 
 document.addEventListener('DOMContentLoaded', () => {
     if (typeof YearView === 'function' && typeof MonthView === 'function') {
-        new App();
+        window._appInstance = new App();
     } else {
         console.error("Error Fatal: Clases de Vistas no definidas.");
     }

@@ -9,7 +9,53 @@
 </head>
 
 <body>
-    <div class="app-container">
+    <!-- Auth Modal -->
+    <div id="auth-modal" class="modal-overlay">
+        <div class="modal-content auth-content">
+            <div id="auth-login-view">
+                <h2>Iniciar Sesión</h2>
+                <form id="form-login">
+                    <div class="form-group">
+                        <label for="login-email">Correo Electrónico</label>
+                        <input type="email" id="login-email" required placeholder="tu@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Contraseña</label>
+                        <input type="password" id="login-password" required placeholder="********">
+                    </div>
+                    <div class="modal-actions" style="flex-direction: column; gap: 10px;">
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">Entrar</button>
+                        <button type="button" class="btn btn-text" id="btn-show-register" style="width: 100%;">¿No tienes cuenta? Solicitar Acceso</button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="auth-register-view" style="display: none;">
+                <h2>Solicitar Acceso</h2>
+                <p style="font-size: 0.9em; margin-bottom: 15px; color: var(--text-secondary);">Se vinculará este dispositivo a tu cuenta.</p>
+                <form id="form-register">
+                    <div class="form-group">
+                        <label for="register-name">Nombre Completo</label>
+                        <input type="text" id="register-name" required placeholder="Ej: Juan Pérez">
+                    </div>
+                    <div class="form-group">
+                        <label for="register-email">Correo Electrónico</label>
+                        <input type="email" id="register-email" required placeholder="tu@email.com">
+                    </div>
+                    <div class="modal-actions" style="flex-direction: column; gap: 10px;">
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">Solicitar</button>
+                        <button type="button" class="btn btn-text" id="btn-show-login" style="width: 100%;">Volver a Iniciar Sesión</button>
+                    </div>
+                </form>
+            </div>
+            <div id="auth-loading" style="display: none; text-align: center; padding: 20px;">
+                <p>Procesando...</p>
+            </div>
+            <div id="auth-message" style="margin-top: 15px; text-align: center; font-size: 0.9em; color: var(--danger-color);"></div>
+        </div>
+    </div>
+
+    <div class="app-container" id="main-app" style="display: none;">
         <header class="app-header">
             <div class="header-left">
                 <h1>Calendario de Proyectos</h1>
@@ -38,6 +84,10 @@
                 </div>
             </div>
             <div class="header-right">
+                <div class="user-profile">
+                    <span id="current-user-name" style="margin-right: 15px; font-weight: 500; font-size: 0.9em;"></span>
+                    <button id="btn-logout" class="btn btn-secondary btn-sm" style="margin-right: 15px;">Salir</button>
+                </div>
                 <button id="btn-add-project" class="btn btn-primary">Añadir Proyecto</button>
                 <button id="btn-add-task" class="btn btn-primary">Añadir Tarea</button>
             </div>
@@ -199,12 +249,14 @@
     <!-- Firebase (CDN for External Hosting) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
 
     <!-- Manual Configuration -->
     <script src="./js/firebaseConfig.js"></script>
 
     <!-- App Scripts -->
     <script src="./js/utils.js"></script>
+    <script src="./js/auth.js"></script>
     <script src="./js/store.js"></script>
     <script src="./js/viewYear.js"></script>
     <script src="./js/viewMonth.js"></script>
