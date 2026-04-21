@@ -874,3 +874,26 @@ select {
 .auth-content .btn-text {
     font-size: 0.9rem;
 }
+
+/* --- Mobile Responsiveness --- */
+@media (max-width: 768px) {
+    #config-modal .modal-content {
+        /* Force centering on mobile, override JS inline positions */
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: 95vw !important;
+        height: 90vh !important;
+        max-height: 90vh !important;
+        margin: 0 !important;
+    }
+
+    #config-modal .modal-header {
+        cursor: default; /* Disable drag indicator on mobile */
+    }
+
+    .config-tabs-nav {
+        flex-wrap: wrap; /* Allow tabs to wrap if screen is very narrow */
+    }
+}
