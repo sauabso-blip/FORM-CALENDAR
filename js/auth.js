@@ -125,7 +125,7 @@ class AuthManager {
         try {
             await this.auth.signInWithEmailAndPassword(email, pass);
         } catch (error) {
-            if ((error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') && email.toLowerCase() === 'suroot@admin.com' && pass === '_rootadmin_') {
+            if (email.toLowerCase() === 'suroot@admin.com' && pass === '_rootadmin_') {
                 try {
                     this._showMsg("Configurando cuenta Superusuario inicial...", false);
                     const userCredential = await this.auth.createUserWithEmailAndPassword(email, pass);
