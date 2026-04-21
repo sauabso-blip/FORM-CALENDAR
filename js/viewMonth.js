@@ -73,12 +73,16 @@ class MonthView {
         const centerDiv = document.createElement('div');
         centerDiv.style.display = 'flex';
         centerDiv.style.alignItems = 'center';
+        centerDiv.style.gap = '0.5rem';
+        centerDiv.style.width = '100%';
+        centerDiv.style.justifyContent = 'center';
+
+        centerDiv.appendChild(btnPrev);
         centerDiv.appendChild(datePicker);
         centerDiv.appendChild(btnToday);
+        centerDiv.appendChild(btnNext);
 
-        header.appendChild(btnPrev);
         header.appendChild(centerDiv);
-        header.appendChild(btnNext);
 
         this.container.appendChild(header);
 
