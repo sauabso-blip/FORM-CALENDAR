@@ -112,7 +112,7 @@ class MonthView {
 
         const tasks = this.store.getTasks();
         const filteredTasks = tasks.filter(t => {
-            return this.state.filters.categories.includes(t.categoryId);
+            return !t.categoryId || this.state.filters.categories.includes(t.categoryId);
         });
 
         // Agrupar en filas de 7 días para anteponer el número de semana (1 a 53) en cada fila

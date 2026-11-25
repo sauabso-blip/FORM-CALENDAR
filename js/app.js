@@ -46,16 +46,16 @@ class App {
         setTimeout(() => {
             if (!this.initialized) {
                 if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
-                    this.initAfterAuth();
+                    this.initAfterAuth(false);
                 } else if (localStorage.getItem('agenda_local_mode') === 'true') {
                     this.initAfterAuth(true);
                 }
             }
-        }, 100);
+        }, 300);
     }
 
     initAfterAuth(forceLocal = false) {
-        if (this.initialized) return;
+        if (this.initialized && this.store.isLocal === forceLocal) return;
         this.store.initialize(() => {
             if (!this.initialized) {
                 this._initializeFilters();
@@ -529,7 +529,7 @@ class App {
         if (!summaryBar) return;
 
         const filteredTasks = this.store.getTasks().filter(t =>
-            this.state.filters.categories.includes(t.categoryId)
+            !t.categoryId || this.state.filters.categories.includes(t.categoryId)
         );
 
         const totalAllFiltered = filteredTasks.reduce((sum, t) => sum + (t.amount > 0 ? Number(t.amount) : 0), 0);

@@ -64,7 +64,13 @@ const store = {
     },
 
     initialize: function (callback, forceLocal = false) {
-        this.subscribe(callback);
+        if (typeof callback === 'function') this.subscribe(callback);
+
+        // Cancelar listeners previos si existían
+        if (this._unsubs && Array.isArray(this._unsubs)) {
+            this._unsubs.forEach(unsub => { try { unsub(); } catch (e) { } });
+        }
+        this._unsubs = [];
 
         if (forceLocal || !db) {
             console.log("Store: Inicializando en Modo Local (LocalStorage)...");
@@ -74,7 +80,8 @@ const store = {
             return;
         }
 
-        console.log("Store: Configurando listeners para la base de datos personal...");
+        this.isLocal = false;
+        console.log("Store: Conectando y configurando listeners en tiempo real con Firestore...");
 
         const getId = (val) => {
             if (!val) return null;
@@ -82,8 +89,6 @@ const store = {
             if (val.id) return val.id;
             return val.toString();
         };
-
-        let hasError = false;
 
         const catUnsub = db.collection("categories").onSnapshot(async snapshot => {
             console.log(`Store: Recibidas ${snapshot.docs.length} categorías.`);
@@ -100,7 +105,6 @@ const store = {
                         wroteToDb = false;
                     }
                 }
-                // Si falló escribir en Firestore (ej: bloqueo de reglas), poblar localmente de inmediato
                 if (!wroteToDb) {
                     this.state.categories = DEFAULT_CATEGORIES.map((c, idx) => ({
                         id: 'cat_' + (idx + 1),
@@ -128,16 +132,16 @@ const store = {
 
             this._notify();
         }, err => {
-            console.warn("Error o falta de permisos en Firestore categorías. Activando fallback local:", err);
-            if (!this.isLocal) {
-                this.isLocal = true;
+            console.warn("Aviso en listener de categorías en Firestore:", err);
+            if (!this.state.categories || this.state.categories.length === 0) {
                 this._loadLocal();
                 this._notify();
             }
         });
+        this._unsubs.push(catUnsub);
 
         const taskUnsub = db.collection("tasks").onSnapshot(snapshot => {
-            console.log(`Store: Recibidas ${snapshot.docs.length} entradas.`);
+            console.log(`Store: Recibidas ${snapshot.docs.length} entradas desde Firestore.`);
             this.state.tasks = snapshot.docs.map(doc => {
                 const data = doc.data();
                 const rawCategoryId = data.categoryId || data.calendarId || data.calendar_id || data.category;
@@ -155,13 +159,14 @@ const store = {
 
             this._notify();
         }, err => {
-            console.warn("Error o falta de permisos en Firestore tareas. Activando fallback local:", err);
-            if (!this.isLocal) {
-                this.isLocal = true;
+            console.warn("Aviso en listener de tareas en Firestore:", err);
+            // No forzamos permanentemente modo local para permitir reintentos cuando el auth esté listo
+            if (!this.state.tasks || this.state.tasks.length === 0) {
                 this._loadLocal();
                 this._notify();
             }
         });
+        this._unsubs.push(taskUnsub);
 
         // Subscripción a calendarios compartidos
         const sharesUnsub = db.collection("calendar_shares").onSnapshot(snapshot => {
@@ -169,10 +174,11 @@ const store = {
             this.state.shares = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             this._notify();
         }, err => {
-            console.warn("Fallo en listener de calendar_shares (usando local):", err);
+            console.warn("Fallo en listener de calendar_shares:", err);
             this._loadLocalShares();
             this._notify();
         });
+        this._unsubs.push(sharesUnsub);
     },
 
     _loadLocal() {
@@ -249,6 +255,52 @@ const store = {
 
     _saveLocalShares() {
         localStorage.setItem('agenda_local_shares', JSON.stringify(this.state.shares));
+    },
+
+    // Sincroniza cualquier tarea creada previamente en modo local/offline hacia Firestore
+    async syncLocalTasksToFirestore() {
+        if (!db) return;
+        const currentUser = this.getCurrentUser();
+        if (!currentUser || !currentUser.email || currentUser.email === 'local@agenda.personal') return;
+
+        const storedTasks = localStorage.getItem('agenda_local_tasks');
+        if (!storedTasks) return;
+
+        try {
+            const localTasks = JSON.parse(storedTasks);
+            if (!Array.isArray(localTasks) || localTasks.length === 0) return;
+
+            console.log(`Store: Sincronizando ${localTasks.length} tarea(s) locales a Firestore para ${currentUser.email}...`);
+            for (const t of localTasks) {
+                if (t.id === 'task_demo_1') continue;
+
+                const alreadyInState = this.state.tasks.some(st => st.id === t.id || (st.name === t.name && st.startDate === t.startDate));
+                if (!alreadyInState) {
+                    const taskToUpload = {
+                        name: t.name || t.description || 'Sin título',
+                        description: t.description || t.name || '',
+                        comments: t.comments || '',
+                        location: t.location || '',
+                        startDate: t.startDate,
+                        endDate: t.endDate,
+                        time: t.time || '',
+                        reminder: t.reminder || 'none',
+                        amount: t.amount || null,
+                        categoryId: t.categoryId,
+                        attachments: t.attachments || [],
+                        ownerEmail: currentUser.email.toLowerCase(),
+                        ownerName: currentUser.name,
+                        ownerUid: currentUser.uid,
+                        sharedWith: t.sharedWith || []
+                    };
+                    await db.collection("tasks").add(taskToUpload);
+                }
+            }
+            localStorage.removeItem('agenda_local_tasks');
+            console.log("Store: Sincronización de tareas locales a Firestore finalizada.");
+        } catch (e) {
+            console.warn("Aviso durante sincronización de tareas locales:", e);
+        }
     },
 
     // --- Métodos de Escritura (Categorías y Tareas) ---
@@ -329,7 +381,9 @@ const store = {
             sharedWith: Array.isArray(taskData.sharedWith) ? taskData.sharedWith.map(e => (e || '').trim().toLowerCase()).filter(Boolean) : []
         };
 
-        if (this.isLocal || !db) {
+        const hasAuthUser = typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser;
+
+        if ((this.isLocal && !hasAuthUser) || !db) {
             const newTask = {
                 id: 'task_' + Date.now() + Math.random().toString(36).substr(2, 4),
                 ...dataWithOwner
@@ -340,6 +394,7 @@ const store = {
             return newTask.id;
         }
         try {
+            this.isLocal = false;
             const ref = await db.collection("tasks").add(dataWithOwner);
             return ref.id;
         } catch (err) {

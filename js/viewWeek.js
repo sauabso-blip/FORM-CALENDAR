@@ -135,7 +135,7 @@ class WeekView {
         // Tareas filtradas
         const tasks = this.store.getTasks();
         const filteredTasks = tasks.filter(t => {
-            return this.state.filters.categories.includes(t.categoryId);
+            return !t.categoryId || this.state.filters.categories.includes(t.categoryId);
         });
 
         // 3. Fila de contenido:

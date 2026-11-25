@@ -137,7 +137,10 @@ class AuthManager {
     _setupAuthStateListener() {
         this.auth.onAuthStateChanged(user => {
             if (user) {
-                // User is signed in
+                // El usuario ha iniciado sesión con cuenta real: desactivar modo local
+                localStorage.removeItem('agenda_local_mode');
+                this.isLocalMode = false;
+
                 const btnSu = document.getElementById('btn-su');
                 if (btnSu) {
                     btnSu.style.display = (user.email === 'suroot@admin.com') ? 'inline-block' : 'none';
@@ -150,7 +153,6 @@ class AuthManager {
                         this.userNameSpan.textContent = doc.data().name || user.email;
                     } else {
                         this.userNameSpan.textContent = user.email;
-                        // Auto-crear perfil en Firestore si no existía para que aparezca en el panel SU
                         this.db.collection('users').doc(user.uid).set({
                             name: user.displayName || user.email.split('@')[0],
                             email: user.email.toLowerCase(),
@@ -162,21 +164,28 @@ class AuthManager {
                     this.userNameSpan.textContent = user.email;
                 });
 
-                // We register the device for this user on every successful auth init
                 this.db.collection('devices').doc(this.deviceId).set({
                     userId: user.uid,
                     lastLogin: new Date().toISOString()
                 }, { merge: true }).catch(err => console.log("Permiso denegado para escribir device: ", err));
 
-                // Trigger App INIT ONLY if it hasn't been initialized
-                if (window._appInstance && !window._appInstance.initialized) {
-                    window._appInstance.initAfterAuth();
+                // Inicializar la aplicación con Firestore
+                const triggerInit = () => {
+                    if (window._appInstance) {
+                        window._appInstance.initAfterAuth(false);
+                        // Sincronizar automáticamente cualquier tarea guardada localmente hacia Firestore
+                        if (typeof store !== 'undefined' && store.syncLocalTasksToFirestore) {
+                            setTimeout(() => store.syncLocalTasksToFirestore(), 500);
+                        }
+                    }
+                };
+
+                if (window._appInstance) {
+                    triggerInit();
                 } else {
                     const checkInterval = setInterval(() => {
                         if (window._appInstance) {
-                            if (!window._appInstance.initialized) {
-                                window._appInstance.initAfterAuth();
-                            }
+                            triggerInit();
                             clearInterval(checkInterval);
                         }
                     }, 50);
@@ -194,6 +203,8 @@ class AuthManager {
     async _handleLogin(e) {
         e.preventDefault();
         this._clearMsg();
+        localStorage.removeItem('agenda_local_mode');
+        this.isLocalMode = false;
         const email = document.getElementById('login-email').value;
         const pass = document.getElementById('login-password').value;
         this._showLoading(true, "Verificando credenciales...");

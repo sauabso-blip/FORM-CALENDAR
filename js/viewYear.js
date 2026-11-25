@@ -48,7 +48,7 @@ class YearView {
         const categories = this.store.getCategories();
 
         const filteredTasks = tasks.filter(t => {
-            return this.state.filters.categories.includes(t.categoryId);
+            return !t.categoryId || this.state.filters.categories.includes(t.categoryId);
         });
 
         months.forEach(mObj => {
