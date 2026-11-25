@@ -1,13 +1,15 @@
 class MonthView {
-    constructor(store, state, onTaskUpdate, onContextMenu) {
+    constructor(store, state, onTaskUpdate, onContextMenu, onTaskClick, onMonthChange) {
         this.store = store;
         this.state = state;
         this.onTaskUpdate = onTaskUpdate;
         this.onContextMenu = onContextMenu;
+        this.onTaskClick = onTaskClick;
+        this.onMonthChange = onMonthChange;
         this.container = document.createElement('div');
         this.container.className = 'month-view';
 
-        // Tooltip management (similar to YearView)
+        // Tooltip management
         this.tooltip = document.createElement('div');
         this.tooltip.className = 'app-tooltip';
         document.body.appendChild(this.tooltip);
@@ -17,9 +19,8 @@ class MonthView {
     render() {
         const year = this.state.currentDate.getFullYear();
         const month = this.state.currentDate.getMonth();
-        this.container.innerHTML = ''; // Clear previous content
+        this.container.innerHTML = '';
 
-        // Add Header with controls
         const header = document.createElement('div');
         header.style.display = 'flex';
         header.style.justifyContent = 'space-between';
@@ -30,12 +31,17 @@ class MonthView {
         header.style.borderRadius = '0.5rem';
         header.style.border = '1px solid var(--border)';
 
+        const notifyMonthChange = () => {
+            this.render();
+            if (this.onMonthChange) this.onMonthChange();
+        };
+
         const btnPrev = document.createElement('button');
         btnPrev.className = 'btn btn-secondary';
         btnPrev.innerHTML = '&#8592; Anterior';
         btnPrev.onclick = () => {
-             this.state.currentDate.setMonth(this.state.currentDate.getMonth() - 1);
-             this.render();
+            this.state.currentDate.setMonth(this.state.currentDate.getMonth() - 1);
+            notifyMonthChange();
         };
 
         const datePicker = document.createElement('input');
@@ -46,11 +52,11 @@ class MonthView {
         datePicker.style.fontFamily = 'inherit';
         datePicker.value = `${year}-${String(month + 1).padStart(2, '0')}`;
         datePicker.onchange = (e) => {
-             if (e.target.value) {
-                 const [y, m] = e.target.value.split('-');
-                 this.state.currentDate.setFullYear(parseInt(y, 10), parseInt(m, 10) - 1, 1);
-                 this.render();
-             }
+            if (e.target.value) {
+                const [y, m] = e.target.value.split('-');
+                this.state.currentDate.setFullYear(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+                notifyMonthChange();
+            }
         };
 
         const btnToday = document.createElement('button');
@@ -58,16 +64,16 @@ class MonthView {
         btnToday.textContent = 'Mes Actual';
         btnToday.style.marginLeft = '10px';
         btnToday.onclick = () => {
-             this.state.currentDate = new Date();
-             this.render();
+            this.state.currentDate = new Date();
+            notifyMonthChange();
         };
 
         const btnNext = document.createElement('button');
         btnNext.className = 'btn btn-secondary';
         btnNext.innerHTML = 'Siguiente &#8594;';
         btnNext.onclick = () => {
-             this.state.currentDate.setMonth(this.state.currentDate.getMonth() + 1);
-             this.render();
+            this.state.currentDate.setMonth(this.state.currentDate.getMonth() + 1);
+            notifyMonthChange();
         };
 
         const centerDiv = document.createElement('div');
@@ -83,13 +89,11 @@ class MonthView {
         centerDiv.appendChild(btnNext);
 
         header.appendChild(centerDiv);
-
         this.container.appendChild(header);
 
         const grid = document.createElement('div');
         grid.className = 'month-grid';
 
-        // 1. Add day headers (Lun, Mar, ...)
         const dayNames = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
         dayNames.forEach(name => {
             const headerCell = document.createElement('div');
@@ -98,20 +102,13 @@ class MonthView {
             grid.appendChild(headerCell);
         });
 
-        // 2. Get calendar days for the current month
         const days = this._getCalendarDays(year, month);
 
-        // Filter tasks once
         const tasks = this.store.getTasks();
         const filteredTasks = tasks.filter(t => {
-            const projectMatch = this.state.filters.projects.includes(t.projectId);
-            const personMatch = this.state.filters.people.includes(t.personId);
-            // Logic: If task has an executor, it must be selected. If no executor, show it (pass filter).
-            const executorMatch = !t.executorId || this.state.filters.executors.includes(t.executorId);
-            return projectMatch && personMatch && executorMatch;
+            return this.state.filters.categories.includes(t.categoryId);
         });
 
-        // 3. Create a cell for each day
         days.forEach(day => {
             const cell = this._createDayCell(day, month, filteredTasks);
             grid.appendChild(cell);
@@ -130,9 +127,10 @@ class MonthView {
 
         cell.innerHTML = `<div class="month-cell-header">${day.day}</div>`;
 
-        const dateString = `${day.year}-${String(day.month + 1).padStart(2, '0')}-${String(day.day).padStart(2, '0')}`;
+        // Handle month overflow/underflow cleanly when forming YYYY-MM-DD
+        const cellDate = new Date(day.year, day.month, day.day);
+        const dateString = `${cellDate.getFullYear()}-${String(cellDate.getMonth() + 1).padStart(2, '0')}-${String(cellDate.getDate()).padStart(2, '0')}`;
 
-        // Find tasks for this day
         const dayTasks = tasks.filter(t => dateString >= t.startDate && dateString <= t.endDate);
 
         dayTasks.forEach(task => {
@@ -140,16 +138,14 @@ class MonthView {
             cell.appendChild(taskElement);
         });
 
-        // Drag and Drop functionality
         this._addDragDropHandlers(cell, dateString);
-
         return cell;
     }
 
     _addDragDropHandlers(cell, dateString) {
         cell.addEventListener('dragover', (e) => {
             e.preventDefault();
-            cell.style.backgroundColor = '#eef2ff'; // Highlight
+            cell.style.backgroundColor = '#eef2ff';
         });
 
         cell.addEventListener('dragleave', () => {
@@ -170,7 +166,6 @@ class MonthView {
                 const newStartDate = new Date(dateString);
                 const newEndDate = new Date(newStartDate.getTime() + duration);
 
-                // Format to YYYY-MM-DD
                 const formatDate = (d) => d.toISOString().split('T')[0];
 
                 this.onTaskUpdate(taskId, {
@@ -182,31 +177,107 @@ class MonthView {
     }
 
     _createTaskElement(task) {
-        const project = this.store.getProjects().find(p => p.id === task.projectId);
+        const category = this.store.getCategories().find(c => c.id === task.categoryId);
         const taskElement = document.createElement('div');
         taskElement.className = 'month-task-item';
-        taskElement.textContent = task.name;
-        const color = (project && project.color) ? project.color : '#cccccc';
+
+        let badges = '';
+        if (task.time) badges += ` ${task.time}`;
+        if (task.reminder && task.reminder !== 'none') badges += ' 🔔';
+        if (task.amount && task.amount > 0) badges += ` 💶${Number(task.amount).toFixed(2)}€`;
+        if (task.attachments && task.attachments.length > 0) badges += ` 📎${task.attachments.length}`;
+
+        taskElement.textContent = `${task.name}${badges}`;
+        const color = (category && category.color) ? category.color : '#3b82f6';
         taskElement.style.backgroundColor = color;
 
         taskElement.draggable = true;
         taskElement.addEventListener('dragstart', (e) => {
             e.dataTransfer.setData('text/plain', task.id);
-            e.stopPropagation(); // Prevent parent drag handlers
+            e.stopPropagation();
         });
 
-        // Add tooltip listeners
+        // Mouse hover
         taskElement.addEventListener('mouseenter', (e) => {
-            this._showTooltip(e, task, project);
+            this._showTooltip(e, task, category);
         });
         taskElement.addEventListener('mouseleave', () => {
             this._hideTooltip();
         });
 
-        // Context Menu
+        // Touch handling (Mobile: tap = card, long-press = context menu)
+        let touchTimer = null;
+        let touchMoved = false;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let wasTouch = false;
+
+        taskElement.addEventListener('touchstart', (e) => {
+            wasTouch = true;
+            if (e.touches.length > 1) return;
+            touchMoved = false;
+            const t = e.touches[0];
+            touchStartX = t.pageX;
+            touchStartY = t.pageY;
+
+            touchTimer = setTimeout(() => {
+                touchTimer = null;
+                this._hideTooltip();
+                if (this.onContextMenu) {
+                    this.onContextMenu({ pageX: touchStartX, pageY: touchStartY, preventDefault: () => {} }, task);
+                }
+            }, 500);
+        }, { passive: true });
+
+        taskElement.addEventListener('touchmove', (e) => {
+            const t = e.touches[0];
+            if (Math.abs(t.pageX - touchStartX) > 10 || Math.abs(t.pageY - touchStartY) > 10) {
+                touchMoved = true;
+                if (touchTimer) {
+                    clearTimeout(touchTimer);
+                    touchTimer = null;
+                }
+            }
+        }, { passive: true });
+
+        taskElement.addEventListener('touchend', (e) => {
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                touchTimer = null;
+                if (!touchMoved) {
+                    e.preventDefault();
+                    this._hideTooltip();
+                    if (this.onTaskClick) {
+                        this.onTaskClick(task);
+                    }
+                }
+            }
+        });
+
+        taskElement.addEventListener('touchcancel', () => {
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                touchTimer = null;
+            }
+        });
+
+        // Mouse click (PC left-click -> Card)
+        taskElement.addEventListener('click', (e) => {
+            if (wasTouch) {
+                wasTouch = false;
+                return;
+            }
+            e.stopPropagation();
+            this._hideTooltip();
+            if (this.onTaskClick) {
+                this.onTaskClick(task);
+            }
+        });
+
+        // Mouse right-click (PC right-click -> Context menu)
         taskElement.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            this._hideTooltip(); // Hide tooltip immediately
+            this._hideTooltip();
             if (this.onContextMenu) {
                 this.onContextMenu(e, task);
             }
@@ -220,25 +291,20 @@ class MonthView {
         const firstDayOfMonth = new Date(year, month, 1);
         const lastDayOfMonth = new Date(year, month + 1, 0);
 
-        // Adjust to start week on Monday
-        const startDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7; // 0=Monday, 6=Sunday
+        const startDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7;
 
-        // Days from previous month
         const prevMonthEndDate = new Date(year, month, 0);
         for (let i = startDayOfWeek; i > 0; i--) {
             const day = prevMonthEndDate.getDate() - i + 1;
             days.push({ day, month: month - 1, year: year });
         }
 
-        // Days of current month
         for (let i = 1; i <= lastDayOfMonth.getDate(); i++) {
             days.push({ day: i, month: month, year: year });
         }
 
-        // Days from next month to fill grid
-        const gridsize = 42; // 6 weeks * 7 days
-        const nextMonthStartDay = 1;
-        let nextMonthDay = nextMonthStartDay;
+        const gridsize = 42;
+        let nextMonthDay = 1;
         while (days.length < gridsize) {
             days.push({ day: nextMonthDay++, month: month + 1, year: year });
         }
@@ -246,16 +312,43 @@ class MonthView {
         return days;
     }
 
-    // Tooltip methods (copied from YearView for consistency)
-    _showTooltip(e, task, project) {
-        const person = this.store.getPeople().find(p => p.id === task.personId);
-        const executor = this.store.getExecutors().find(ex => ex.id === task.executorId);
+    _formatReminder(reminder) {
+        const map = {
+            'none': '',
+            'on_time': 'A la hora del evento',
+            '15m': '15 min antes',
+            '1h': '1 hora antes',
+            '1d': '1 día antes'
+        };
+        return map[reminder] || '';
+    }
+
+    _showTooltip(e, task, category) {
+        const reminderLabel = this._formatReminder(task.reminder);
+        const amountRow = (task.amount && task.amount > 0)
+            ? `<div class="tooltip-row"><span class="tooltip-label">Importe:</span> <strong>${Number(task.amount).toFixed(2)} €</strong></div>`
+            : '';
+        const timeRow = task.time
+            ? `<div class="tooltip-row"><span class="tooltip-label">Hora:</span> ${task.time}</div>`
+            : '';
+        const reminderRow = reminderLabel
+            ? `<div class="tooltip-row"><span class="tooltip-label">Aviso:</span> 🔔 ${reminderLabel}</div>`
+            : '';
+        const locationRow = task.location
+            ? `<div class="tooltip-row"><span class="tooltip-label">Lugar:</span> ${task.location}</div>`
+            : '';
+        const attachmentsRow = (task.attachments && task.attachments.length > 0)
+            ? `<div class="tooltip-row"><span class="tooltip-label">Adjuntos:</span> 📎 ${task.attachments.length} archivo(s)</div>`
+            : '';
 
         this.tooltip.innerHTML = `
             <div class="tooltip-title">${task.name}</div>
-            <div class="tooltip-row"><span class="tooltip-label">Proyecto:</span> ${project ? project.name : 'N/A'}</div>
-            <div class="tooltip-row"><span class="tooltip-label">Responsable:</span> ${person ? person.name : 'N/A'}</div>
-            <div class="tooltip-row"><span class="tooltip-label">Ejecutor:</span> ${executor ? executor.name : 'N/A'}</div>
+            <div class="tooltip-row"><span class="tooltip-label">Categoría:</span> ${category ? category.name : 'N/A'}</div>
+            ${amountRow}
+            ${timeRow}
+            ${reminderRow}
+            ${locationRow}
+            ${attachmentsRow}
             <hr>
             <div class="tooltip-row"><span class="tooltip-label">Inicio:</span> ${task.startDate}</div>
             <div class="tooltip-row"><span class="tooltip-label">Fin:</span> ${task.endDate}</div>

@@ -2,40 +2,77 @@ class App {
     constructor() {
         this.state = {
             currentView: 'year',
-            filters: { projects: [], people: [], executors: [] },
+            filters: { categories: [] },
             currentDate: new Date(),
         };
         this.store = store;
-        this.monthView = new MonthView(this.store, this.state, this.handleTaskUpdate.bind(this), this._handleContextMenu.bind(this));
-        this.yearView = new YearView(this.store, this.state, this.handleTaskUpdate.bind(this), this._handleContextMenu.bind(this));
+        this.currentAttachments = [];
+        this.attachmentsToDelete = [];
+        this.aiAssistant = (typeof AIAssistant === 'function') ? new AIAssistant(this.store, () => this.state) : null;
+
+        this.monthView = new MonthView(
+            this.store,
+            this.state,
+            this.handleTaskUpdate.bind(this),
+            this._handleContextMenu.bind(this),
+            this._showTaskCardModal.bind(this),
+            this._updateExpenseSummary.bind(this)
+        );
+        this.yearView = new YearView(
+            this.store,
+            this.state,
+            this.handleTaskUpdate.bind(this),
+            this._handleContextMenu.bind(this),
+            this._showTaskCardModal.bind(this)
+        );
 
         this._bindUIEvents();
         this._bindDataEvents();
         this._initConfigModal();
 
         this.initialized = false;
-        // The store initialization is now driven by auth.js
+        this.knownCategoryIds = new Set();
+
+        // Auto-initialize if auth already resolved or in local mode
+        setTimeout(() => {
+            if (!this.initialized) {
+                if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+                    this.initAfterAuth();
+                } else if (localStorage.getItem('agenda_local_mode') === 'true') {
+                    this.initAfterAuth(true);
+                }
+            }
+        }, 100);
     }
 
-    initAfterAuth() {
+    initAfterAuth(forceLocal = false) {
         if (this.initialized) return;
         this.store.initialize(() => {
-            console.log("Store inicializado post-auth. Estableciendo filtros iniciales...");
-            this._initializeFilters();
+            if (!this.initialized) {
+                this._initializeFilters();
+                this.initialized = true;
+            } else {
+                // Auto-enable any newly added categories in the filter
+                this.store.getCategories().forEach(c => {
+                    if (!this.knownCategoryIds.has(c.id)) {
+                        this.knownCategoryIds.add(c.id);
+                        if (!this.state.filters.categories.includes(c.id)) {
+                            this.state.filters.categories.push(c.id);
+                        }
+                    }
+                });
+            }
             this.render();
-            this.initialized = true;
-        });
+        }, forceLocal);
     }
 
     _initializeFilters() {
-        // By default, all filters are active, so we fill the filter arrays with all available IDs.
-        this.state.filters.projects = this.store.getProjects().map(p => p.id);
-        this.state.filters.people = this.store.getPeople().map(p => p.id);
-        this.state.filters.executors = this.store.getExecutors().map(e => e.id);
+        const cats = this.store.getCategories();
+        this.state.filters.categories = cats.map(c => c.id);
+        this.knownCategoryIds = new Set(this.state.filters.categories);
     }
 
     _bindUIEvents() {
-        // Filter dropdown logic
         document.querySelectorAll('.multi-select').forEach(msContainer => {
             const btn = msContainer.querySelector('.ms-btn');
             const dropdown = msContainer.querySelector('.ms-dropdown');
@@ -64,11 +101,11 @@ class App {
         document.getElementById('btn-view-rolling').addEventListener('click', () => this.switchView('rolling'));
         document.getElementById('btn-view-month').addEventListener('click', () => this.switchView('month'));
         document.getElementById('btn-add-task').addEventListener('click', () => this._showTaskModal());
-        document.getElementById('btn-add-project').addEventListener('click', () => this._openProjectModal());
+        document.getElementById('btn-add-category').addEventListener('click', () => this._openCategoryModal());
 
-        // Modal Cancel Buttons
         const modalTask = document.getElementById('modal-task');
-        const modalProject = document.getElementById('modal-project');
+        const modalCategory = document.getElementById('modal-category');
+        const modalTaskCard = document.getElementById('modal-task-card');
 
         const closeTaskModal = () => {
             if (typeof modalTask.close === 'function') {
@@ -77,73 +114,130 @@ class App {
             modalTask.style.display = 'none';
         };
 
-        const closeProjectModal = () => {
-            if (typeof modalProject.close === 'function') {
-                try { modalProject.close(); } catch (e) { }
+        const closeCategoryModal = () => {
+            if (typeof modalCategory.close === 'function') {
+                try { modalCategory.close(); } catch (e) { }
             }
-            modalProject.style.display = 'none';
+            modalCategory.style.display = 'none';
+        };
+
+        const closeTaskCardModal = () => {
+            if (modalTaskCard) {
+                if (typeof modalTaskCard.close === 'function') {
+                    try { modalTaskCard.close(); } catch (e) { }
+                }
+                modalTaskCard.style.display = 'none';
+            }
         };
 
         document.getElementById('btn-cancel-task')?.addEventListener('click', closeTaskModal);
-        document.getElementById('btn-cancel-project')?.addEventListener('click', closeProjectModal);
+        document.getElementById('btn-cancel-category')?.addEventListener('click', closeCategoryModal);
+        document.getElementById('btn-close-task-card')?.addEventListener('click', closeTaskCardModal);
+        document.getElementById('btn-card-close')?.addEventListener('click', closeTaskCardModal);
+        document.getElementById('btn-card-edit')?.addEventListener('click', () => {
+            closeTaskCardModal();
+            if (this.currentTaskInCard) {
+                this._showTaskModal(this.currentTaskInCard);
+            }
+        });
 
         // Form Submit: Task
         document.getElementById('form-task')?.addEventListener('submit', async (e) => {
             e.preventDefault();
+            const submitBtn = document.getElementById('btn-submit-task');
+            const statusDiv = document.getElementById('task-upload-status');
+            const filesInput = document.getElementById('task-files');
+
             const idInput = document.getElementById('task-id');
-            const desc = document.getElementById('task-desc').value;
-            const comments = document.getElementById('task-comments').value;
-            const location = document.getElementById('task-location').value;
+            const desc = document.getElementById('task-desc').value.trim();
+            const comments = document.getElementById('task-comments').value.trim();
+            const location = document.getElementById('task-location').value.trim();
             const start = document.getElementById('task-start').value;
             const end = document.getElementById('task-end').value;
-            const projectId = document.getElementById('task-project').value;
-            const assignee = document.getElementById('task-assignee').value;
-            const executorId = document.getElementById('task-executor').value;
+            const time = document.getElementById('task-time').value;
+            const reminder = document.getElementById('task-reminder').value;
+            const amountRaw = document.getElementById('task-amount').value;
+            const categoryId = document.getElementById('task-category').value;
 
-            const taskData = {
-                name: desc, // Note: Model field validation needed (store uses name or description?) - DB usually flexible but view uses 'name'.
-                description: desc, // Save both to be safe or check ViewYear
-                comments,
-                location,
-                startDate: start, // ViewYear uses startDate/endDate
-                endDate: end,
-                projectId,
-                personId: assignee, // ViewYear uses personId
-                executorId
-            };
+            const amount = amountRaw !== '' ? parseFloat(amountRaw) : null;
 
-            if (idInput.value) {
-                await this.store.updateTask(idInput.value, taskData);
-            } else {
-                await this.store.addTask(taskData);
+            try {
+                if (submitBtn) submitBtn.disabled = true;
+
+                // Upload new files if selected
+                const uploadedAttachments = [...this.currentAttachments];
+                const newFiles = filesInput && filesInput.files ? Array.from(filesInput.files) : [];
+
+                if (newFiles.length > 0) {
+                    if (statusDiv) {
+                        statusDiv.style.display = 'block';
+                        statusDiv.textContent = `Subiendo ${newFiles.length} archivo(s)...`;
+                    }
+                    for (let i = 0; i < newFiles.length; i++) {
+                        if (statusDiv) {
+                            statusDiv.textContent = `Subiendo (${i + 1}/${newFiles.length}): ${newFiles[i].name}...`;
+                        }
+                        const uploaded = await this.store.uploadAttachment(newFiles[i]);
+                        uploadedAttachments.push(uploaded);
+                    }
+                }
+
+                // Delete removed attachments from Storage
+                for (const pathToDelete of this.attachmentsToDelete) {
+                    await this.store.deleteAttachmentFile(pathToDelete);
+                }
+
+                const taskData = {
+                    name: desc,
+                    description: desc,
+                    comments,
+                    location,
+                    startDate: start,
+                    endDate: end,
+                    time: time || '',
+                    reminder: reminder || 'none',
+                    amount: (amount !== null && !isNaN(amount)) ? amount : null,
+                    categoryId,
+                    attachments: uploadedAttachments
+                };
+
+                if (idInput.value) {
+                    await this.store.updateTask(idInput.value, taskData);
+                } else {
+                    await this.store.addTask(taskData);
+                }
+
+                e.target.reset();
+                this.currentAttachments = [];
+                this.attachmentsToDelete = [];
+                if (statusDiv) statusDiv.style.display = 'none';
+                closeTaskModal();
+            } catch (err) {
+                console.error("Error al guardar entrada:", err);
+                alert("Error al guardar o subir adjuntos: " + (err.message || err));
+                if (statusDiv) statusDiv.style.display = 'none';
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
             }
-
-            e.target.reset();
-            closeTaskModal();
         });
 
-        // Form Submit: Project
-        document.getElementById('form-project')?.addEventListener('submit', async (e) => {
+        // Form Submit: Category
+        document.getElementById('form-category')?.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const idInput = document.getElementById('project-id');
-            const name = document.getElementById('project-name').value;
-            const color = document.getElementById('project-color').value;
+            const idInput = document.getElementById('category-id');
+            const name = document.getElementById('category-name').value.trim();
+            const color = document.getElementById('category-color').value;
 
-            const projectData = { name, color };
+            const categoryData = { name, color };
 
             if (idInput.value) {
-                // Update project logic if store supports it (store.js didn't have updateProject explicitly shown in read, checking...)
-                // store.js in Step 21 had addProject, addTask, updateTask.
-                // It did NOT have updateProject. I might need to add it to store.js.
-                // For now, I'll log warning or try to update if method exists, else just add.
-                console.warn("Update project not fully implemented in store yet.");
-                // We'll fallback to add for now or just log.
+                await this.store.updateCategory(idInput.value, categoryData);
             } else {
-                await this.store.addProject(projectData);
+                await this.store.addCategory(categoryData);
             }
 
             e.target.reset();
-            closeProjectModal();
+            closeCategoryModal();
         });
 
         // Move Task Modal & Logic
@@ -183,9 +277,7 @@ class App {
             closeMoveModal();
         });
 
-        this._setupFilter('project');
-        this._setupFilter('person');
-        this._setupFilter('executor');
+        this._setupFilter('category');
     }
 
     switchView(view) {
@@ -215,41 +307,100 @@ class App {
         });
 
         this.updateFilterDropdowns();
+        this._updateExpenseSummary();
+    }
+
+    _updateExpenseSummary() {
+        const summaryBar = document.getElementById('expense-summary-bar');
+        if (!summaryBar) return;
+
+        const filteredTasks = this.store.getTasks().filter(t =>
+            this.state.filters.categories.includes(t.categoryId)
+        );
+
+        const totalAllFiltered = filteredTasks.reduce((sum, t) => sum + (t.amount > 0 ? Number(t.amount) : 0), 0);
+        const alertsCount = filteredTasks.filter(t => t.reminder && t.reminder !== 'none').length;
+
+        let periodLabel = '';
+        let periodTotal = 0;
+
+        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+        if (this.state.currentView === 'month') {
+            const year = this.state.currentDate.getFullYear();
+            const month = this.state.currentDate.getMonth();
+            const monthStartStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const monthEndStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+            periodLabel = `Gastos (${monthNames[month]} ${year})`;
+            periodTotal = filteredTasks
+                .filter(t => t.amount > 0 && t.startDate <= monthEndStr && t.endDate >= monthStartStr)
+                .reduce((sum, t) => sum + Number(t.amount), 0);
+        } else {
+            const year = this.state.currentDate.getFullYear();
+            let startRange, endRange;
+            if (this.state.currentView === 'year') {
+                startRange = `${year}-01-01`;
+                endRange = `${year}-12-31`;
+                periodLabel = `Gastos (${year})`;
+            } else {
+                const startMonth = this.state.currentDate.getMonth();
+                const startD = new Date(year, startMonth, 1);
+                const endD = new Date(year, startMonth + 12, 0);
+                startRange = startD.toISOString().split('T')[0];
+                endRange = endD.toISOString().split('T')[0];
+                periodLabel = `Gastos (Año vista)`;
+            }
+
+            periodTotal = filteredTasks
+                .filter(t => t.amount > 0 && t.startDate <= endRange && t.endDate >= startRange)
+                .reduce((sum, t) => sum + Number(t.amount), 0);
+        }
+
+        summaryBar.innerHTML = `
+            <div class="summary-item">
+                <span class="summary-label">💶 ${periodLabel}:</span>
+                <span class="summary-value">${periodTotal.toFixed(2)} €</span>
+            </div>
+            <div class="summary-divider"></div>
+            <div class="summary-item">
+                <span class="summary-label">Total acumulado (filtro):</span>
+                <span class="summary-value">${totalAllFiltered.toFixed(2)} €</span>
+            </div>
+            <div class="summary-divider"></div>
+            <div class="summary-item">
+                <span class="summary-label">🔔 Avisos activos:</span>
+                <span class="summary-value">${alertsCount}</span>
+            </div>
+        `;
     }
 
     updateFilterDropdowns() {
-        this._updateFilterDropdown('project', this.store.getProjects());
-        this._updateFilterDropdown('person', this.store.getPeople());
-        this._updateFilterDropdown('executor', this.store.getExecutors());
-    }
-
-    _getStateKeyForFilterType(type) {
-        return type === 'person' ? 'people' : type + 's';
+        this._updateFilterDropdown('category', this.store.getCategories());
     }
 
     _setupFilter(type) {
         const container = document.getElementById(`ms-list-${type}`);
         if (!container) return;
 
-        const stateKey = this._getStateKeyForFilterType(type);
-
         container.addEventListener('change', (e) => {
             if (e.target.type !== 'checkbox') return;
 
-            const allItems = this.store[`get${stateKey.charAt(0).toUpperCase() + stateKey.slice(1)}`]();
+            const allItems = this.store.getCategories();
             const allItemIds = allItems.map(item => item.id);
 
             if (e.target.classList.contains('ms-select-all')) {
-                this.state.filters[stateKey] = e.target.checked ? allItemIds : [];
+                this.state.filters.categories = e.target.checked ? allItemIds : [];
             } else {
                 const id = e.target.value;
-                const set = new Set(this.state.filters[stateKey]);
+                const set = new Set(this.state.filters.categories);
                 if (e.target.checked) {
                     set.add(id);
                 } else {
                     set.delete(id);
                 }
-                this.state.filters[stateKey] = Array.from(set);
+                this.state.filters.categories = Array.from(set);
             }
             this.render();
         });
@@ -259,56 +410,38 @@ class App {
         const container = document.getElementById(`ms-list-${type}`);
         if (!container) return;
 
-        const stateKey = this._getStateKeyForFilterType(type);
-        const allSelected = items.length > 0 && this.state.filters[stateKey].length === items.length;
+        const allSelected = items.length > 0 && this.state.filters.categories.length === items.length;
 
-        let optionsHTML = `<label class="ms-option ms-option-all"><input type="checkbox" class="ms-select-all" ${allSelected ? 'checked' : ''} />Seleccionar Todos</label>`;
-        optionsHTML += items.map(item => `<label class="ms-option"><input type="checkbox" value="${item.id}" ${this.state.filters[stateKey].includes(item.id) ? 'checked' : ''} />${item.name}</label>`).join('');
+        let optionsHTML = `<label class="ms-option ms-option-all"><input type="checkbox" class="ms-select-all" ${allSelected ? 'checked' : ''} />Seleccionar Todas</label>`;
+        optionsHTML += items.map(item => `
+            <label class="ms-option">
+                <input type="checkbox" value="${item.id}" ${this.state.filters.categories.includes(item.id) ? 'checked' : ''} />
+                <span class="legend-color" style="background:${item.color || '#3b82f6'}; display:inline-block;"></span>
+                ${item.name}
+            </label>
+        `).join('');
         container.innerHTML = optionsHTML;
     }
 
     // --- MODALS & FORMS ---
 
     _showTaskModal(task = null) {
-        // Populate Selects
-        const projectSelect = document.getElementById('task-project');
-        const assigneeSelect = document.getElementById('task-assignee');
-        const executorSelect = document.getElementById('task-executor');
+        const categorySelect = document.getElementById('task-category');
 
-        if (projectSelect) {
-            projectSelect.innerHTML = '';
-            this.store.getProjects().forEach(p => {
+        if (categorySelect) {
+            categorySelect.innerHTML = '';
+            this.store.getCategories().forEach(c => {
                 const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = p.name;
-                projectSelect.appendChild(opt);
-            });
-        }
-
-        if (assigneeSelect) {
-            assigneeSelect.innerHTML = '';
-            this.store.getPeople().forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = p.name;
-                assigneeSelect.appendChild(opt);
-            });
-        }
-
-        if (executorSelect) {
-            executorSelect.innerHTML = '<option value="">-- Seleccionar --</option>';
-            this.store.getExecutors().forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = p.name;
-                executorSelect.appendChild(opt);
+                opt.value = c.id;
+                opt.textContent = c.name;
+                categorySelect.appendChild(opt);
             });
         }
 
         const modal = document.getElementById('modal-task');
         const form = document.getElementById('form-task');
         const title = form.querySelector('h2');
-        const btnSubmit = form.querySelector('button[type="submit"]');
+        const btnSubmit = document.getElementById('btn-submit-task');
 
         const idInput = document.getElementById('task-id');
         const descInput = document.getElementById('task-desc');
@@ -316,37 +449,53 @@ class App {
         const locationInput = document.getElementById('task-location');
         const startInput = document.getElementById('task-start');
         const endInput = document.getElementById('task-end');
+        const timeInput = document.getElementById('task-time');
+        const reminderInput = document.getElementById('task-reminder');
+        const amountInput = document.getElementById('task-amount');
+        const filesInput = document.getElementById('task-files');
+        const statusDiv = document.getElementById('task-upload-status');
+
+        if (filesInput) filesInput.value = '';
+        if (statusDiv) statusDiv.style.display = 'none';
+        this.attachmentsToDelete = [];
 
         if (task) {
-            title.textContent = 'Editar Tarea';
-            btnSubmit.textContent = 'Actualizar Tarea';
+            title.textContent = 'Editar Entrada';
+            btnSubmit.textContent = 'Actualizar';
             idInput.value = task.id;
-            descInput.value = task.name;
+            descInput.value = task.name || '';
             commentsInput.value = task.comments || '';
             locationInput.value = task.location || '';
-            startInput.value = task.startDate;
-            endInput.value = task.endDate;
-            if (projectSelect) projectSelect.value = task.projectId;
-            if (assigneeSelect) assigneeSelect.value = task.personId;
-            if (executorSelect) executorSelect.value = task.executorId || '';
+            startInput.value = task.startDate || '';
+            endInput.value = task.endDate || '';
+            timeInput.value = task.time || '';
+            reminderInput.value = task.reminder || 'none';
+            amountInput.value = (task.amount !== null && task.amount !== undefined) ? task.amount : '';
+            if (categorySelect) categorySelect.value = task.categoryId || '';
+            this.currentAttachments = Array.isArray(task.attachments) ? [...task.attachments] : [];
         } else {
-            title.textContent = 'Nueva Tarea';
-            btnSubmit.textContent = 'Crear Tarea';
+            title.textContent = 'Nueva Entrada';
+            btnSubmit.textContent = 'Guardar';
             idInput.value = '';
             descInput.value = '';
             commentsInput.value = '';
             locationInput.value = '';
-            startInput.value = '';
-            endInput.value = '';
-            if (executorSelect) executorSelect.value = '';
+            const todayStr = new Date().toISOString().split('T')[0];
+            startInput.value = todayStr;
+            endInput.value = todayStr;
+            timeInput.value = '';
+            reminderInput.value = 'none';
+            amountInput.value = '';
+            this.currentAttachments = [];
         }
 
-        modal.style.display = ''; // Clear inline display style first
+        this._renderAttachmentsList();
+
+        modal.style.display = '';
         if (typeof modal.showModal === 'function') {
             try {
                 modal.showModal();
             } catch (e) {
-                // If already open or other error, fallback
                 console.warn('showModal error:', e);
                 modal.style.display = 'flex';
             }
@@ -355,25 +504,96 @@ class App {
         }
     }
 
-    _openProjectModal(project = null) {
-        const modal = document.getElementById('modal-project');
-        const form = document.getElementById('form-project');
+    _renderAttachmentsList() {
+        const container = document.getElementById('task-attachments-list');
+        if (!container) return;
+
+        container.innerHTML = '';
+        if (!this.currentAttachments || this.currentAttachments.length === 0) {
+            return;
+        }
+
+        this.currentAttachments.forEach((att, index) => {
+            const item = document.createElement('div');
+            item.className = 'attachment-item';
+
+            const info = document.createElement('div');
+            info.className = 'attachment-info';
+
+            const icon = this._getAttachmentIcon(att.type, att.name);
+            const sizeKB = att.size ? ` (${Math.max(1, Math.round(att.size / 1024))} KB)` : '';
+
+            const link = document.createElement('a');
+            link.href = att.url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.className = 'attachment-link';
+            link.textContent = `${icon} ${att.name}${sizeKB}`;
+            info.appendChild(link);
+
+            if (att.type && att.type.startsWith('image/')) {
+                const img = document.createElement('img');
+                img.src = att.url;
+                img.alt = att.name;
+                img.className = 'attachment-preview-img';
+                info.appendChild(img);
+            } else if (att.type && att.type.startsWith('audio/')) {
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = att.url;
+                audio.className = 'attachment-audio';
+                info.appendChild(audio);
+            }
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn-icon attachment-remove';
+            removeBtn.title = 'Eliminar adjunto';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.onclick = () => {
+                const removed = this.currentAttachments.splice(index, 1)[0];
+                if (removed && removed.path) {
+                    this.attachmentsToDelete.push(removed.path);
+                }
+                this._renderAttachmentsList();
+            };
+
+            item.appendChild(info);
+            item.appendChild(removeBtn);
+            container.appendChild(item);
+        });
+    }
+
+    _getAttachmentIcon(mimeType = '', fileName = '') {
+        const lower = fileName.toLowerCase();
+        if (mimeType.startsWith('image/')) return '🖼️';
+        if (mimeType.startsWith('audio/')) return '🎵';
+        if (mimeType.includes('pdf') || lower.endsWith('.pdf')) return '📕';
+        if (lower.endsWith('.doc') || lower.endsWith('.docx')) return '📘';
+        if (lower.endsWith('.xls') || lower.endsWith('.xlsx')) return '📗';
+        if (lower.endsWith('.txt')) return '📄';
+        return '📎';
+    }
+
+    _openCategoryModal(category = null) {
+        const modal = document.getElementById('modal-category');
+        const form = document.getElementById('form-category');
         const title = form.querySelector('h2');
         const btnSubmit = form.querySelector('button[type="submit"]');
 
-        const idInput = document.getElementById('project-id');
-        const nameInput = document.getElementById('project-name');
-        const colorInput = document.getElementById('project-color');
+        const idInput = document.getElementById('category-id');
+        const nameInput = document.getElementById('category-name');
+        const colorInput = document.getElementById('category-color');
 
-        if (project) {
-            title.textContent = 'Editar Proyecto';
+        if (category) {
+            title.textContent = 'Editar Categoría';
             btnSubmit.textContent = 'Guardar Cambios';
-            idInput.value = project.id;
-            nameInput.value = project.name;
-            colorInput.value = project.color;
+            idInput.value = category.id;
+            nameInput.value = category.name;
+            colorInput.value = category.color;
         } else {
-            title.textContent = 'Nuevo Proyecto';
-            btnSubmit.textContent = 'Crear Proyecto';
+            title.textContent = 'Nueva Categoría';
+            btnSubmit.textContent = 'Crear Categoría';
             idInput.value = '';
             nameInput.value = '';
             colorInput.value = '#3b82f6';
@@ -403,22 +623,28 @@ class App {
         const btnOpen = document.getElementById('btn-config');
         const btnClose = document.getElementById('config-modal-close');
 
-        // Tabs
         const tabBtns = document.querySelectorAll('.config-tab-btn');
         const tabContents = document.querySelectorAll('.config-tab-content');
 
-        if (btnOpen) btnOpen.addEventListener('click', () => {
-            modal.style.display = 'flex'; // Need flex to show logic, but we position absolute
+        if (btnOpen && modal) {
+            btnOpen.addEventListener('click', () => {
+                modal.style.display = 'flex';
+                if (modalContent) {
+                    modalContent.style.left = '50%';
+                    modalContent.style.top = '50%';
+                    modalContent.style.transform = 'translate(-50%, -50%)';
+                }
+                this._renderConfigData();
+            });
+        }
 
-            // Initial positioning: below button
-            const btnRect = btnOpen.getBoundingClientRect();
-            // Default center if no button (fallback), but here we use button pos
-            modalContent.style.left = `${btnRect.left}px`;
-            modalContent.style.top = `${btnRect.bottom + 10}px`;
-            modalContent.style.transform = 'none'; // reset center transform if any
-
-            this._renderConfigData();
-        });
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        }
 
         if (btnClose) btnClose.addEventListener('click', () => {
             modal.style.display = 'none';
@@ -435,13 +661,12 @@ class App {
             });
         });
 
-        // Draggable Logic
         let isDragging = false;
         let startX, startY, initialLeft, initialTop;
 
         if (modalHeader) {
             modalHeader.addEventListener('mousedown', (e) => {
-                if (e.target.closest('button')) return; // Don't drag if clicking close button
+                if (e.target.closest('button')) return;
                 isDragging = true;
                 startX = e.clientX;
                 startY = e.clientY;
@@ -469,15 +694,12 @@ class App {
             });
         }
 
-        // Backup
         document.getElementById('btn-export-csv')?.addEventListener('click', () => this._exportToCSV());
         document.getElementById('btn-backup-json')?.addEventListener('click', () => this._backupToJSON());
     }
 
     _renderConfigData() {
-        this._renderConfigList({ type: 'projects', title: 'Proyectos' }, this.store.getProjects());
-        this._renderConfigList({ type: 'people', title: 'Personas' }, this.store.getPeople());
-        this._renderConfigList({ type: 'executors', title: 'Ejecutores' }, this.store.getExecutors());
+        this._renderConfigList({ type: 'categories', title: 'Categorías' }, this.store.getCategories());
     }
 
     _renderConfigList({ type, title }, items) {
@@ -486,11 +708,10 @@ class App {
 
         container.innerHTML = '';
 
-        // Add New Item Input
         const addItemRow = document.createElement('div');
         addItemRow.className = 'config-item-row add-row';
         addItemRow.innerHTML = `
-            <input type="text" placeholder="Nuevo ${title}..." id="new-${type}-input">
+            <input type="text" placeholder="Nueva ${title}..." id="new-${type}-input">
             <button class="btn btn-sm btn-primary">Añadir</button>
         `;
         const addBtn = addItemRow.querySelector('button');
@@ -503,13 +724,11 @@ class App {
 
         container.appendChild(addItemRow);
 
-        // List Existing Items (Editable)
         items.forEach(item => {
             const row = document.createElement('div');
             row.className = 'config-item-row';
 
-            const isProject = type === 'projects';
-            const colorInputInfo = isProject ? `<input type="color" value="${item.color || '#3b82f6'}" class="edit-color">` : '';
+            const colorInputInfo = `<input type="color" value="${item.color || '#3b82f6'}" class="edit-color">`;
 
             row.innerHTML = `
                 <div class="config-item-info" style="flex:1">
@@ -526,13 +745,12 @@ class App {
             const colorInput = row.querySelector('.edit-color');
             const saveBtn = row.querySelector('.save-btn');
 
-            // Save functionality
             saveBtn.addEventListener('click', async () => {
                 const newName = nameInput.value.trim();
                 if (!newName) return;
 
                 const updates = { name: newName };
-                if (isProject && colorInput) updates.color = colorInput.value;
+                if (colorInput) updates.color = colorInput.value;
 
                 await this._updateConfigItem(type, item.id, updates);
                 this._renderConfigData();
@@ -549,45 +767,48 @@ class App {
     }
 
     async _updateConfigItem(type, id, data) {
-        if (type === 'projects') await this.store.updateProject(id, data);
-        if (type === 'people') await this.store.updatePerson(id, data);
-        if (type === 'executors') await this.store.updateExecutor(id, data);
+        if (type === 'categories') await this.store.updateCategory(id, data);
     }
 
     async _addConfigItem(type, value) {
-        if (type === 'projects') {
-            await this.store.addProject({ name: value, color: '#3b82f6' });
-        } else if (type === 'people') {
-            await this.store.addPerson(value);
-        } else if (type === 'executors') {
-            await this.store.addExecutor(value);
+        if (type === 'categories') {
+            await this.store.addCategory({ name: value, color: '#3b82f6' });
         }
         this._renderConfigData();
     }
 
     async _deleteConfigItem(type, id) {
-        if (type === 'projects') await this.store.deleteProject(id);
-        if (type === 'people') await this.store.deletePerson(id);
-        if (type === 'executors') await this.store.deleteExecutor(id);
+        if (type === 'categories') await this.store.deleteCategory(id);
     }
 
     _exportToCSV() {
         const rows = [
-            ['Type', 'ID', 'Name', 'Start', 'End', 'Project', 'Person', 'Executor']
+            ['ID', 'Titulo', 'Categoria', 'FechaInicio', 'FechaFin', 'Hora', 'Aviso', 'ImporteEUR', 'Lugar', 'Adjuntos']
         ];
+        const escapeCSV = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
         this.store.getTasks().forEach(t => {
-            const p = this.store.getProjects().find(x => x.id === t.projectId)?.name || '';
-            const per = this.store.getPeople().find(x => x.id === t.personId)?.name || '';
-            const exc = this.store.getExecutors().find(x => x.id === t.executorId)?.name || '';
-            rows.push(['Task', t.id, t.name, t.startDate, t.endDate, p, per, exc]);
+            const cat = this.store.getCategories().find(x => x.id === t.categoryId)?.name || '';
+            const amt = (t.amount !== null && t.amount !== undefined) ? Number(t.amount).toFixed(2) : '';
+            const attCount = Array.isArray(t.attachments) ? t.attachments.length : 0;
+            rows.push([
+                escapeCSV(t.id),
+                escapeCSV(t.name),
+                escapeCSV(cat),
+                escapeCSV(t.startDate),
+                escapeCSV(t.endDate),
+                escapeCSV(t.time || ''),
+                escapeCSV(t.reminder || 'none'),
+                escapeCSV(amt),
+                escapeCSV(t.location || ''),
+                escapeCSV(attCount)
+            ]);
         });
 
-        let csvContent = "data:text/csv;charset=utf-8,"
-            + rows.map(e => e.join(",")).join("\n");
-
+        const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
         const link = document.createElement("a");
         link.setAttribute("href", encodeURI(csvContent));
-        link.setAttribute("download", "calendar_export.csv");
+        link.setAttribute("download", "agenda_personal_export.csv");
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -595,29 +816,180 @@ class App {
 
     _backupToJSON() {
         const data = {
-            projects: this.store.getProjects(),
-            people: this.store.getPeople(),
-            executors: this.store.getExecutors(),
+            categories: this.store.getCategories(),
             tasks: this.store.getTasks(),
             exportedAt: new Date().toISOString()
         };
         const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
         const link = document.createElement("a");
         link.setAttribute("href", jsonStr);
-        link.setAttribute("download", "calendar_backup.json");
+        link.setAttribute("download", "agenda_personal_backup.json");
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
     }
+
+    _showTaskCardModal(task) {
+        if (!task) return;
+        this.currentTaskInCard = task;
+
+        const modal = document.getElementById('modal-task-card');
+        if (!modal) return;
+        const category = this.store.getCategories().find(c => c.id === task.categoryId);
+
+        // Category Badge
+        const catBadge = document.getElementById('card-task-category');
+        if (catBadge) {
+            catBadge.textContent = category ? category.name : 'General';
+            catBadge.style.backgroundColor = (category && category.color) ? category.color : '#3b82f6';
+        }
+
+        // Title
+        const titleEl = document.getElementById('card-task-title');
+        if (titleEl) titleEl.textContent = task.name || 'Sin título';
+
+        // Dates
+        const datesEl = document.getElementById('card-task-dates');
+        if (datesEl) {
+            if (task.startDate === task.endDate) {
+                datesEl.textContent = task.startDate;
+            } else {
+                datesEl.textContent = `${task.startDate}  ➜  ${task.endDate}`;
+            }
+        }
+
+        // Time
+        const timeRow = document.getElementById('card-task-time-row');
+        const timeEl = document.getElementById('card-task-time');
+        if (timeRow && timeEl) {
+            if (task.time) {
+                timeEl.textContent = task.time;
+                timeRow.style.display = 'flex';
+            } else {
+                timeRow.style.display = 'none';
+            }
+        }
+
+        // Reminder
+        const reminderRow = document.getElementById('card-task-reminder-row');
+        const reminderEl = document.getElementById('card-task-reminder');
+        if (reminderRow && reminderEl) {
+            const reminderMap = {
+                'none': '',
+                'on_time': 'A la hora del evento',
+                '15m': '15 minutos antes',
+                '1h': '1 hora antes',
+                '1d': '1 día antes'
+            };
+            const remText = reminderMap[task.reminder] || '';
+            if (remText) {
+                reminderEl.textContent = remText;
+                reminderRow.style.display = 'flex';
+            } else {
+                reminderRow.style.display = 'none';
+            }
+        }
+
+        // Amount (Expense)
+        const amountRow = document.getElementById('card-task-amount-row');
+        const amountEl = document.getElementById('card-task-amount');
+        if (amountRow && amountEl) {
+            if (task.amount !== null && task.amount !== undefined && task.amount > 0) {
+                amountEl.textContent = `${Number(task.amount).toFixed(2)} €`;
+                amountRow.style.display = 'flex';
+            } else {
+                amountRow.style.display = 'none';
+            }
+        }
+
+        // Location
+        const locRow = document.getElementById('card-task-location-row');
+        const locEl = document.getElementById('card-task-location');
+        if (locRow && locEl) {
+            if (task.location) {
+                locEl.textContent = task.location;
+                locRow.style.display = 'flex';
+            } else {
+                locRow.style.display = 'none';
+            }
+        }
+
+        // Comments
+        const commentsRow = document.getElementById('card-task-comments-row');
+        const commentsEl = document.getElementById('card-task-comments');
+        if (commentsRow && commentsEl) {
+            if (task.comments && task.comments.trim()) {
+                commentsEl.textContent = task.comments;
+                commentsRow.style.display = 'flex';
+            } else {
+                commentsRow.style.display = 'none';
+            }
+        }
+
+        // Attachments (Read-only list)
+        const attRow = document.getElementById('card-task-attachments-row');
+        const attList = document.getElementById('card-task-attachments');
+        if (attRow && attList) {
+            attList.innerHTML = '';
+            if (Array.isArray(task.attachments) && task.attachments.length > 0) {
+                attRow.style.display = 'flex';
+                task.attachments.forEach(att => {
+                    const item = document.createElement('div');
+                    item.className = 'attachment-item';
+
+                    const info = document.createElement('div');
+                    info.className = 'attachment-info';
+
+                    const icon = this._getAttachmentIcon(att.type, att.name);
+                    const sizeKB = att.size ? ` (${Math.max(1, Math.round(att.size / 1024))} KB)` : '';
+
+                    const link = document.createElement('a');
+                    link.href = att.url;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.className = 'attachment-link';
+                    link.textContent = `${icon} ${att.name}${sizeKB}`;
+                    info.appendChild(link);
+
+                    if (att.type && att.type.startsWith('image/')) {
+                        const img = document.createElement('img');
+                        img.src = att.url;
+                        img.alt = att.name;
+                        img.className = 'attachment-preview-img';
+                        info.appendChild(img);
+                    } else if (att.type && att.type.startsWith('audio/')) {
+                        const audio = document.createElement('audio');
+                        audio.controls = true;
+                        audio.src = att.url;
+                        audio.className = 'attachment-audio';
+                        info.appendChild(audio);
+                    }
+
+                    item.appendChild(info);
+                    attList.appendChild(item);
+                });
+            } else {
+                attRow.style.display = 'none';
+            }
+        }
+
+        modal.style.display = '';
+        if (typeof modal.showModal === 'function') {
+            try { modal.showModal(); } catch (e) { modal.style.display = 'flex'; }
+        } else {
+            modal.style.display = 'flex';
+        }
+    }
+
     _handleContextMenu(e, task) {
         const menu = document.getElementById('context-menu');
         if (!menu) return;
 
         menu.innerHTML = '';
         const options = [
-            { label: 'Editar', action: () => this._showTaskModal(task) },
-            { label: 'Mover a...', action: () => this._showMoveTaskModal(task) },
-            { label: 'Eliminar', action: () => this._confirmDeleteTask(task) }
+            { label: '✏️ Editar entrada', action: () => this._showTaskModal(task) },
+            { label: '🔄 Mover a otra fecha...', action: () => this._showMoveTaskModal(task) },
+            { label: '🗑️ Eliminar', action: () => this._confirmDeleteTask(task) }
         ];
 
         options.forEach(opt => {
@@ -625,27 +997,32 @@ class App {
             item.className = 'menu-item';
             item.textContent = opt.label;
             item.addEventListener('click', (ev) => {
-                ev.stopPropagation(); // Avoid triggering window click immediately
+                ev.stopPropagation();
                 opt.action();
                 menu.style.display = 'none';
             });
             menu.appendChild(item);
         });
 
-        // Determine position (prevent overflow if needed, simplified for now)
-        menu.style.left = `${e.pageX}px`;
-        menu.style.top = `${e.pageY}px`;
+        // Ensure menu doesn't overflow mobile viewport
+        const menuWidth = 200;
+        const menuHeight = 140;
+        const x = Math.max(10, Math.min(e.pageX, window.innerWidth - menuWidth - 15));
+        const y = Math.max(10, Math.min(e.pageY, window.innerHeight - menuHeight - 15));
+
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
         menu.style.display = 'block';
     }
 
     async _confirmDeleteTask(task) {
-        if (confirm(`¿Estás seguro de eliminar la tarea "${task.name}"?`)) {
+        if (confirm(`¿Estás seguro de eliminar la entrada "${task.name}"?`)) {
             await this.store.deleteTask(task.id);
         }
     }
 
     _showMoveTaskModal(task) {
-        this.currentTaskToMove = task; // Store reference
+        this.currentTaskToMove = task;
         const modal = document.getElementById('modal-move-task');
         const input = document.getElementById('move-task-date');
         input.value = task.startDate;

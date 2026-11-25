@@ -1,9 +1,10 @@
 class YearView {
-    constructor(store, state, onTaskUpdate, onContextMenu) {
+    constructor(store, state, onTaskUpdate, onContextMenu, onTaskClick) {
         this.store = store;
         this.state = state;
         this.onTaskUpdate = onTaskUpdate;
         this.onContextMenu = onContextMenu;
+        this.onTaskClick = onTaskClick;
         this.container = document.createElement('div');
         this.container.className = 'year-view-container';
 
@@ -15,16 +16,15 @@ class YearView {
     }
 
     render(viewMode) {
-        this.container.innerHTML = ''; // Clear previous content
+        this.container.innerHTML = '';
         const currentYear = this.state.currentDate.getFullYear();
 
-        // Determine months to render based on view mode
         let monthsToRender = [];
         if (viewMode === 'year') {
             for (let i = 0; i < 12; i++) {
                 monthsToRender.push({ year: currentYear, monthIndex: i });
             }
-        } else { // rolling view
+        } else {
             const startMonth = this.state.currentDate.getMonth();
             for (let i = 0; i < 12; i++) {
                 const d = new Date(currentYear, startMonth + i, 1);
@@ -45,35 +45,14 @@ class YearView {
         gridContainer.appendChild(this._createHeader());
 
         const tasks = this.store.getTasks();
-        const projects = this.store.getProjects();
+        const categories = this.store.getCategories();
 
-        // Filter tasks based on global filters in this.state.filters
         const filteredTasks = tasks.filter(t => {
-            const projectMatch = this.state.filters.projects.includes(t.projectId);
-            const personMatch = this.state.filters.people.includes(t.personId);
-
-            // For optional executor, if task has no executor, should it be shown?
-            // Current strict logic: show only if executor is in the list.
-            // If "All" is selected, and task has NO executor, it hides.
-            // Adaptation: If task has no executor, treat as 'neutral' OR require user to have "(Unassigned)" option?
-            // For now, strict filtering as per checklist. If ID is not in selected list, hide it. 
-            // Note: If task.executorId is empty, it won't be in the list of IDs (which are real IDs).
-
-            // Allow unassigned executor if we assume filters only apply to assigned ones? 
-            // Better behavior: If filter has items, strict match.
-            const executorMatch = !t.executorId || this.state.filters.executors.includes(t.executorId);
-            // Wait, if I uncheck "Executor A", I don't want to see Executor A.
-            // If I uncheck ALL executors, I see nothing with executors.
-            // What about tasks with NO executor?
-            // If I interpret "Filter Executors" as "Show tasks handled by these people", unassigned shouldn't show?
-            // BUT usually unassigned tasks are important.
-            // Let's stick to: "If task has an executor, it MUST be in the list. If it has NO executor, allow it."
-
-            return projectMatch && personMatch && executorMatch;
+            return this.state.filters.categories.includes(t.categoryId);
         });
 
         months.forEach(mObj => {
-            const row = this._createMonthRow(mObj.year, mObj.monthIndex, filteredTasks, projects);
+            const row = this._createMonthRow(mObj.year, mObj.monthIndex, filteredTasks, categories);
             gridContainer.appendChild(row);
         });
 
@@ -92,7 +71,7 @@ class YearView {
         return headerRow;
     }
 
-    _createMonthRow(year, monthIndex, tasks, projects) {
+    _createMonthRow(year, monthIndex, tasks, categories) {
         const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
 
@@ -119,8 +98,8 @@ class YearView {
         const monthTasks = this._layoutTasksForMonth(tasks, year, monthIndex);
 
         monthTasks.forEach(task => {
-            const project = projects.find(p => p.id === task.projectId);
-            const bar = this._createTaskBar(task, year, monthIndex, project);
+            const category = categories.find(c => c.id === task.categoryId);
+            const bar = this._createTaskBar(task, year, monthIndex, category);
             daysContainer.appendChild(bar);
         });
 
@@ -142,12 +121,11 @@ class YearView {
 
         relevantTasks.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
 
-        const lanes = []; // This will be an array of arrays, each sub-array is a lane
+        const lanes = [];
         this.maxLane = 0;
 
         relevantTasks.forEach(task => {
             let assignedLane = -1;
-            // Find a lane where the task fits
             for (let i = 0; i < lanes.length; i++) {
                 const lastTaskInLane = lanes[i][lanes[i].length - 1];
                 if (new Date(task.startDate) > new Date(lastTaskInLane.endDate)) {
@@ -158,7 +136,6 @@ class YearView {
                 }
             }
 
-            // If no lane was found, create a new one
             if (assignedLane === -1) {
                 task.lane = lanes.length;
                 lanes.push([task]);
@@ -169,33 +146,108 @@ class YearView {
         return relevantTasks;
     }
 
-    _createTaskBar(task, year, monthIndex, project) {
+    _createTaskBar(task, year, monthIndex, category) {
         const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
         const taskStart = new Date(task.startDate);
         const taskEnd = new Date(task.endDate);
 
-        const startDay = taskStart.getMonth() === monthIndex ? taskStart.getDate() : 1;
-        const endDay = taskEnd.getMonth() === monthIndex ? taskEnd.getDate() : daysInMonth;
+        const startDay = (taskStart.getFullYear() === year && taskStart.getMonth() === monthIndex) ? taskStart.getDate() : 1;
+        const endDay = (taskEnd.getFullYear() === year && taskEnd.getMonth() === monthIndex) ? taskEnd.getDate() : daysInMonth;
 
         const bar = document.createElement('div');
         bar.className = 'task-bar';
-        bar.textContent = task.name;
-        const color = (project && project.color) ? project.color : '#cccccc';
+
+        let badges = '';
+        if (task.reminder && task.reminder !== 'none') badges += ' 🔔';
+        if (task.amount && task.amount > 0) badges += ` 💶${Number(task.amount).toFixed(2)}€`;
+        if (task.attachments && task.attachments.length > 0) badges += ` 📎${task.attachments.length}`;
+
+        bar.textContent = `${task.name}${badges}`;
+        const color = (category && category.color) ? category.color : '#3b82f6';
         bar.style.backgroundColor = color;
 
         const dayWidth = 100 / 31;
         bar.style.left = `${(startDay - 1) * dayWidth}%`;
         bar.style.width = `${(endDay - startDay + 1) * dayWidth}%`;
-        bar.style.top = `${task.lane * 28 + 4}px`; // 28px per lane height
+        bar.style.top = `${task.lane * 28 + 4}px`;
 
-        // Show tooltip on hover
-        bar.addEventListener('mouseenter', (e) => this._showTooltip(e, task, project));
+        // Mouse hover
+        bar.addEventListener('mouseenter', (e) => this._showTooltip(e, task, category));
         bar.addEventListener('mouseleave', () => this._hideTooltip());
 
-        // Context Menu
+        // Touch handling (Mobile: tap = card, long-press = context menu)
+        let touchTimer = null;
+        let touchMoved = false;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let wasTouch = false;
+
+        bar.addEventListener('touchstart', (e) => {
+            wasTouch = true;
+            if (e.touches.length > 1) return;
+            touchMoved = false;
+            const t = e.touches[0];
+            touchStartX = t.pageX;
+            touchStartY = t.pageY;
+
+            touchTimer = setTimeout(() => {
+                touchTimer = null;
+                this._hideTooltip();
+                if (this.onContextMenu) {
+                    this.onContextMenu({ pageX: touchStartX, pageY: touchStartY, preventDefault: () => {} }, task);
+                }
+            }, 500);
+        }, { passive: true });
+
+        bar.addEventListener('touchmove', (e) => {
+            const t = e.touches[0];
+            if (Math.abs(t.pageX - touchStartX) > 10 || Math.abs(t.pageY - touchStartY) > 10) {
+                touchMoved = true;
+                if (touchTimer) {
+                    clearTimeout(touchTimer);
+                    touchTimer = null;
+                }
+            }
+        }, { passive: true });
+
+        bar.addEventListener('touchend', (e) => {
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                touchTimer = null;
+                if (!touchMoved) {
+                    e.preventDefault();
+                    this._hideTooltip();
+                    if (this.onTaskClick) {
+                        this.onTaskClick(task);
+                    }
+                }
+            }
+        });
+
+        bar.addEventListener('touchcancel', () => {
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                touchTimer = null;
+            }
+        });
+
+        // Mouse click (PC left-click -> Card)
+        bar.addEventListener('click', (e) => {
+            if (wasTouch) {
+                wasTouch = false;
+                return;
+            }
+            e.stopPropagation();
+            this._hideTooltip();
+            if (this.onTaskClick) {
+                this.onTaskClick(task);
+            }
+        });
+
+        // Mouse right-click (PC right-click -> Context menu)
         bar.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            this._hideTooltip(); // Hide tooltip immediately
+            this._hideTooltip();
             if (this.onContextMenu) {
                 this.onContextMenu(e, task);
             }
@@ -204,15 +256,43 @@ class YearView {
         return bar;
     }
 
-    _showTooltip(e, task, project) {
-        const person = this.store.getPeople().find(p => p.id === task.personId);
-        const executor = this.store.getExecutors().find(ex => ex.id === task.executorId);
+    _formatReminder(reminder) {
+        const map = {
+            'none': '',
+            'on_time': 'A la hora del evento',
+            '15m': '15 min antes',
+            '1h': '1 hora antes',
+            '1d': '1 día antes'
+        };
+        return map[reminder] || '';
+    }
+
+    _showTooltip(e, task, category) {
+        const reminderLabel = this._formatReminder(task.reminder);
+        const amountRow = (task.amount && task.amount > 0)
+            ? `<div class="tooltip-row"><span class="tooltip-label">Importe:</span> <strong>${Number(task.amount).toFixed(2)} €</strong></div>`
+            : '';
+        const timeRow = task.time
+            ? `<div class="tooltip-row"><span class="tooltip-label">Hora:</span> ${task.time}</div>`
+            : '';
+        const reminderRow = reminderLabel
+            ? `<div class="tooltip-row"><span class="tooltip-label">Aviso:</span> 🔔 ${reminderLabel}</div>`
+            : '';
+        const locationRow = task.location
+            ? `<div class="tooltip-row"><span class="tooltip-label">Lugar:</span> ${task.location}</div>`
+            : '';
+        const attachmentsRow = (task.attachments && task.attachments.length > 0)
+            ? `<div class="tooltip-row"><span class="tooltip-label">Adjuntos:</span> 📎 ${task.attachments.length} archivo(s)</div>`
+            : '';
 
         this.tooltip.innerHTML = `
             <div class="tooltip-title">${task.name}</div>
-            <div class="tooltip-row"><span class="tooltip-label">Proyecto:</span> ${project ? project.name : 'N/A'}</div>
-            <div class="tooltip-row"><span class="tooltip-label">Responsable:</span> ${person ? person.name : 'N/A'}</div>
-            <div class="tooltip-row"><span class="tooltip-label">Ejecutor:</span> ${executor ? executor.name : 'N/A'}</div>
+            <div class="tooltip-row"><span class="tooltip-label">Categoría:</span> ${category ? category.name : 'N/A'}</div>
+            ${amountRow}
+            ${timeRow}
+            ${reminderRow}
+            ${locationRow}
+            ${attachmentsRow}
             <hr>
             <div class="tooltip-row"><span class="tooltip-label">Inicio:</span> ${task.startDate}</div>
             <div class="tooltip-row"><span class="tooltip-label">Fin:</span> ${task.endDate}</div>

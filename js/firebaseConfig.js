@@ -5,12 +5,13 @@
 // Pega aquí tu objeto de configuración de Firebase.
 // Lo puedes obtener en la consola de Firebase: Project Settings -> General -> Your Apps -> SDK Setup and Configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyCClasJEjf0nv3HPHSxGoOU3i5MWZOpsmA",
-    authDomain: "calendario-proyectos-8da3b.firebaseapp.com",
-    projectId: "calendario-proyectos-8da3b",
-    storageBucket: "calendario-proyectos-8da3b.firebasestorage.app",
-    messagingSenderId: "809263181415",
-    appId: "1:809263181415:web:5e31076071556330396ec2"
+    apiKey: "AIzaSyC1gIxY57o9kwZjZBnDVL7qgcvolmz-yr0",
+    authDomain: "personalcalendar-741d7.firebaseapp.com",
+    projectId: "personalcalendar-741d7",
+    storageBucket: "personalcalendar-741d7.firebasestorage.app",
+    messagingSenderId: "92487128494",
+    appId: "1:92487128494:web:d8f174bf7661ad9732a43f",
+    measurementId: "G-1W16Z5ZMLY"
 };
 
 // Inicializar Firebase

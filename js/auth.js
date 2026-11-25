@@ -48,7 +48,37 @@ class AuthManager {
 
         document.getElementById('form-login')?.addEventListener('submit', (e) => this._handleLogin(e));
         document.getElementById('form-register')?.addEventListener('submit', (e) => this._handleRegister(e));
-        document.getElementById('btn-logout')?.addEventListener('click', () => this.auth.signOut());
+        document.getElementById('btn-logout')?.addEventListener('click', () => {
+            if (this.isLocalMode) {
+                this.isLocalMode = false;
+                this.modal.style.display = 'flex';
+                this.mainApp.style.display = 'none';
+                return;
+            }
+            this.auth.signOut();
+        });
+
+        document.getElementById('btn-enter-local')?.addEventListener('click', () => {
+            this.startLocalMode();
+        });
+    }
+
+    startLocalMode() {
+        this.isLocalMode = true;
+        localStorage.setItem('agenda_local_mode', 'true');
+        this.modal.style.display = 'none';
+        this.mainApp.style.display = 'flex';
+        if (this.userNameSpan) {
+            this.userNameSpan.textContent = 'Modo Local (Offline)';
+        }
+
+        if (window._appInstance) {
+            window._appInstance.initAfterAuth(true);
+        } else {
+            window.addEventListener('DOMContentLoaded', () => {
+                if (window._appInstance) window._appInstance.initAfterAuth(true);
+            });
+        }
     }
 
     _showLoading(show, message = "Procesando...") {
@@ -103,8 +133,16 @@ class AuthManager {
                 // Trigger App INIT ONLY if it hasn't been initialized
                 if (window._appInstance && !window._appInstance.initialized) {
                     window._appInstance.initAfterAuth();
-                } else if (!window._appInstance) {
-                   // Fallback logic inside app.js will handle instantiation if undefined right now
+                } else {
+                    const checkInterval = setInterval(() => {
+                        if (window._appInstance) {
+                            if (!window._appInstance.initialized) {
+                                window._appInstance.initAfterAuth();
+                            }
+                            clearInterval(checkInterval);
+                        }
+                    }, 50);
+                    setTimeout(() => clearInterval(checkInterval), 3000);
                 }
             } else {
                 // User is signed out
@@ -154,61 +192,35 @@ class AuthManager {
     async _handleRegister(e) {
         e.preventDefault();
         this._clearMsg();
-        const name = document.getElementById('register-name').value;
-        const email = document.getElementById('register-email').value;
-        this._showLoading(true, "Comprobando disponibilidad e identificando dispositivo...");
+        const name = document.getElementById('register-name').value.trim();
+        const email = document.getElementById('register-email').value.trim();
+        const pass = document.getElementById('register-password').value;
+        this._showLoading(true, "Creando cuenta...");
 
         try {
-            // 1. Check if email already exists (We can query 'users' collection)
-            const userQuery = await this.db.collection('users').where('email', '==', email).get();
-            if (!userQuery.empty) {
-                throw new Error("El correo ya está registrado.");
-            }
-
-            // 2. Check if device is already registered to someone else
-            const deviceDoc = await this.db.collection('devices').doc(this.deviceId).get();
-            if (deviceDoc.exists) {
-                throw new Error("Este dispositivo ya está vinculado a un usuario. Inicia sesión si te pertenece.");
-            }
-
-            this._showLoading(true, "Creando cuenta y preparando el correo...");
-
-            // 3. Create a temporary password for Firebase Auth logic to work
-            const tempPassword = Math.random().toString(36).slice(-8) + "Az1!";
-            
-            const userCredential = await this.auth.createUserWithEmailAndPassword(email, tempPassword);
+            const userCredential = await this.auth.createUserWithEmailAndPassword(email, pass);
             const user = userCredential.user;
 
-            // 4. Save to Firestore
-            await this.db.collection('users').doc(user.uid).set({
-                name: name,
-                email: email,
-                createdAt: new Date().toISOString()
-            });
-
-            await this.db.collection('devices').doc(this.deviceId).set({
-                userId: user.uid,
-                createdAt: new Date().toISOString()
-            });
-
-            // 5. Send Password reset email so the user can choose their password securely
-            await this.auth.sendPasswordResetEmail(email);
-
-            // 6. Sign out because they need to set their password via the link
-            await this.auth.signOut();
-            
-            this.registerView.style.display = 'none';
-            this.loginView.style.display = 'block';
-            this._showLoading(false);
-            this._showMsg("¡Registro exitoso! Revisa tu correo electrónico para establecer tu contraseña.", false);
-            
+            // Guardar perfil ya autenticado (evita error de permisos antes de login)
+            try {
+                await this.db.collection('users').doc(user.uid).set({
+                    name: name,
+                    email: email,
+                    createdAt: new Date().toISOString()
+                });
+            } catch (fsErr) {
+                console.warn("No se pudo guardar el perfil en Firestore:", fsErr);
+            }
+            // onAuthStateChanged iniciará sesión y abrirá la app automáticamente
         } catch (error) {
             this._showLoading(false);
             let userFriendlyMsg = error.message;
             if (error.code === 'auth/email-already-in-use') {
-                userFriendlyMsg = "El correo ya está registrado en la base de datos central.";
+                userFriendlyMsg = "Este correo ya está registrado. Vuelve a Iniciar Sesión con tu contraseña.";
+            } else if (error.code === 'auth/weak-password') {
+                userFriendlyMsg = "La contraseña debe tener al menos 6 caracteres.";
             }
-            this._showMsg("Error solicitando acceso: " + userFriendlyMsg);
+            this._showMsg("Error creando cuenta: " + userFriendlyMsg);
         }
     }
 }
