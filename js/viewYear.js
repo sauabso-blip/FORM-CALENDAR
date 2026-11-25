@@ -160,6 +160,8 @@ class YearView {
         let badges = '';
         if (task.ownerEmail && this.store.isSharedTask && this.store.isSharedTask(task)) {
             badges += ` [👥 ${task.ownerName || task.ownerEmail.split('@')[0]}]`;
+        } else if (Array.isArray(task.sharedWith) && task.sharedWith.length > 0) {
+            badges += ' 📤';
         }
         if (task.reminder && task.reminder !== 'none') badges += ' 🔔';
         if (task.amount && task.amount > 0) badges += ` 💶${Number(task.amount).toFixed(2)}€`;
@@ -290,7 +292,9 @@ class YearView {
 
         const ownerRow = (task.ownerEmail && this.store.isSharedTask && this.store.isSharedTask(task))
             ? `<div class="tooltip-row" style="color: #4f46e5; font-weight: 600;"><span class="tooltip-label">Agenda:</span> 👥 ${task.ownerName || task.ownerEmail}</div>`
-            : '';
+            : (Array.isArray(task.sharedWith) && task.sharedWith.length > 0)
+                ? `<div class="tooltip-row" style="color: #059669; font-weight: 600;"><span class="tooltip-label">Compartida con:</span> 📤 ${task.sharedWith.join(', ')}</div>`
+                : '';
 
         this.tooltip.innerHTML = `
             <div class="tooltip-title">${task.name}</div>

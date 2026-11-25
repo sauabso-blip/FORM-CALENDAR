@@ -148,7 +148,8 @@ const store = {
                     amount: (data.amount !== undefined && data.amount !== null && data.amount !== '') ? Number(data.amount) : null,
                     time: data.time || '',
                     reminder: data.reminder || 'none',
-                    attachments: Array.isArray(data.attachments) ? data.attachments : []
+                    attachments: Array.isArray(data.attachments) ? data.attachments : [],
+                    sharedWith: Array.isArray(data.sharedWith) ? data.sharedWith : []
                 };
             });
 
@@ -324,7 +325,8 @@ const store = {
             ...taskData,
             ownerEmail: (taskData.ownerEmail || currentUser.email).toLowerCase(),
             ownerName: taskData.ownerName || currentUser.name,
-            ownerUid: taskData.ownerUid || currentUser.uid
+            ownerUid: taskData.ownerUid || currentUser.uid,
+            sharedWith: Array.isArray(taskData.sharedWith) ? taskData.sharedWith.map(e => (e || '').trim().toLowerCase()).filter(Boolean) : []
         };
 
         if (this.isLocal || !db) {
@@ -554,6 +556,14 @@ const store = {
         return taskOwner !== userEmail;
     },
 
+    isIndividuallySharedWithMe(task) {
+        if (!task) return false;
+        const currentUser = this.getCurrentUser();
+        const userEmail = currentUser.email.toLowerCase();
+        const sharedWithList = Array.isArray(task.sharedWith) ? task.sharedWith.map(e => (e || '').toLowerCase()) : [];
+        return sharedWithList.includes(userEmail);
+    },
+
     // --- Métodos de Acceso ---
     getTasks() {
         const currentUser = this.getCurrentUser();
@@ -565,13 +575,17 @@ const store = {
         return this.state.tasks.filter(task => {
             // Si la tarea es antigua sin ownerEmail, la consideramos de este usuario para no perderla
             const taskOwner = (task.ownerEmail || userEmail).toLowerCase();
+            const sharedWithList = Array.isArray(task.sharedWith) ? task.sharedWith.map(e => (e || '').toLowerCase()) : [];
+            const isSingleTaskSharedWithMe = sharedWithList.includes(userEmail);
+            const isCalendarSharedWithMe = sharedEmails.includes(taskOwner);
 
             if (filter === 'mine') {
-                return taskOwner === userEmail;
+                // En mi agenda veo mis tareas + tareas que me hayan compartido puntualmente
+                return taskOwner === userEmail || isSingleTaskSharedWithMe;
             } else if (filter === 'all') {
-                return taskOwner === userEmail || sharedEmails.includes(taskOwner);
+                return taskOwner === userEmail || isCalendarSharedWithMe || isSingleTaskSharedWithMe;
             } else {
-                return taskOwner === filter;
+                return taskOwner === filter && (isCalendarSharedWithMe || isSingleTaskSharedWithMe);
             }
         });
     },

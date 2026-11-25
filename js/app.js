@@ -141,6 +141,12 @@ class App {
                 this._showTaskModal(this.currentTaskInCard);
             }
         });
+        document.getElementById('btn-card-share')?.addEventListener('click', () => {
+            closeTaskCardModal();
+            if (this.currentTaskInCard) {
+                this._promptShareSingleTask(this.currentTaskInCard);
+            }
+        });
 
         // Form Submit: Task
         document.getElementById('form-task')?.addEventListener('submit', async (e) => {
@@ -159,6 +165,8 @@ class App {
             const reminder = document.getElementById('task-reminder').value;
             const amountRaw = document.getElementById('task-amount').value;
             const categoryId = document.getElementById('task-category').value;
+            const sharedWithRaw = document.getElementById('task-shared-with')?.value || '';
+            const sharedWith = sharedWithRaw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
             const amount = amountRaw !== '' ? parseFloat(amountRaw) : null;
 
@@ -199,7 +207,8 @@ class App {
                     reminder: reminder || 'none',
                     amount: (amount !== null && !isNaN(amount)) ? amount : null,
                     categoryId,
-                    attachments: uploadedAttachments
+                    attachments: uploadedAttachments,
+                    sharedWith: sharedWith
                 };
 
                 if (idInput.value) {
@@ -652,6 +661,8 @@ class App {
         if (statusDiv) statusDiv.style.display = 'none';
         this.attachmentsToDelete = [];
 
+        const sharedWithInput = document.getElementById('task-shared-with');
+
         if (task) {
             title.textContent = 'Editar Entrada';
             btnSubmit.textContent = 'Actualizar';
@@ -664,6 +675,9 @@ class App {
             timeInput.value = task.time || '';
             reminderInput.value = task.reminder || 'none';
             amountInput.value = (task.amount !== null && task.amount !== undefined) ? task.amount : '';
+            if (sharedWithInput) {
+                sharedWithInput.value = Array.isArray(task.sharedWith) ? task.sharedWith.join(', ') : '';
+            }
             if (categorySelect) categorySelect.value = task.categoryId || '';
             this.currentAttachments = Array.isArray(task.attachments) ? [...task.attachments] : [];
         } else {
@@ -679,6 +693,9 @@ class App {
             timeInput.value = '';
             reminderInput.value = 'none';
             amountInput.value = '';
+            if (sharedWithInput) {
+                sharedWithInput.value = '';
+            }
             this.currentAttachments = [];
         }
 
@@ -1166,6 +1183,26 @@ class App {
             }
         }
 
+        // Shared Status row
+        const sharedRow = document.getElementById('card-task-shared-row');
+        const sharedBadge = document.getElementById('card-task-shared-badge');
+        if (sharedRow && sharedBadge) {
+            const currentUser = this.store.getCurrentUser();
+            const myEmail = (currentUser.email || '').toLowerCase();
+            const owner = (task.ownerEmail || myEmail).toLowerCase();
+            const sharedWithList = Array.isArray(task.sharedWith) ? task.sharedWith : [];
+
+            if (owner !== myEmail) {
+                sharedBadge.innerHTML = `<span style="color: #4f46e5; font-weight: 600;">👥 Compartida contigo por: ${task.ownerName || task.ownerEmail}</span>`;
+                sharedRow.style.display = 'flex';
+            } else if (sharedWithList.length > 0) {
+                sharedBadge.innerHTML = `<span style="color: #059669; font-weight: 600;">📤 Compartida con: ${sharedWithList.join(', ')}</span>`;
+                sharedRow.style.display = 'flex';
+            } else {
+                sharedRow.style.display = 'none';
+            }
+        }
+
         modal.style.display = '';
         if (typeof modal.showModal === 'function') {
             try { modal.showModal(); } catch (e) { modal.style.display = 'flex'; }
@@ -1181,6 +1218,7 @@ class App {
         menu.innerHTML = '';
         const options = [
             { label: '✏️ Editar entrada', action: () => this._showTaskModal(task) },
+            { label: '👥 Compartir esta tarea...', action: () => this._promptShareSingleTask(task) },
             { label: '🔄 Mover a otra fecha...', action: () => this._showMoveTaskModal(task) },
             { label: '🗑️ Eliminar', action: () => this._confirmDeleteTask(task) }
         ];
@@ -1206,6 +1244,32 @@ class App {
         menu.style.left = `${x}px`;
         menu.style.top = `${y}px`;
         menu.style.display = 'block';
+    }
+
+    async _promptShareSingleTask(task) {
+        if (!task) return;
+        const currentShared = Array.isArray(task.sharedWith) ? task.sharedWith.join(', ') : '';
+        const input = prompt(
+            `👥 Compartir la tarea "${task.name}":\n\nIntroduce el correo del usuario con quien compartir esta tarea (puedes poner varios separados por comas).\nEl destinatario solo verá esta tarea específica en su calendario, sin ver el resto de tu agenda:`,
+            currentShared
+        );
+        if (input === null) return; // Cancelado por usuario
+
+        const sharedList = input.split(',')
+            .map(e => e.trim().toLowerCase())
+            .filter(Boolean);
+
+        try {
+            await this.store.updateTask(task.id, { sharedWith: sharedList });
+            if (sharedList.length > 0) {
+                alert(`✅ Tarea compartida con: ${sharedList.join(', ')}`);
+            } else {
+                alert(`ℹ️ Esta tarea ya no está compartida con ningún usuario.`);
+            }
+        } catch (err) {
+            console.error("Error al compartir tarea:", err);
+            alert("Hubo un error al guardar la compartición de la tarea: " + (err.message || err));
+        }
     }
 
     async _confirmDeleteTask(task) {

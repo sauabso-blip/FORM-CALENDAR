@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agenda Personal</title>
-    <link rel="stylesheet" href="./css/styles.css?v=18">
+    <link rel="stylesheet" href="./css/styles.css?v=19">
 </head>
 
 <body>
@@ -320,12 +320,21 @@
                         <div id="card-task-attachments" class="attachments-list"></div>
                     </div>
                 </div>
+
+                <div id="card-task-shared-row" class="task-card-row" style="display: none;">
+                    <span class="card-icon">👥</span>
+                    <div class="card-field-group" style="width: 100%;">
+                        <span class="card-field-label">Compartición:</span>
+                        <div id="card-task-shared-badge" class="card-field-value" style="font-size: 0.85rem;"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="task-card-footer">
-                <span class="text-muted" style="font-size: 0.8rem;">💡 Clic derecho (o mantener pulsado) para editar o mover</span>
+                <span class="text-muted" style="font-size: 0.8rem;">💡 Clic derecho para editar, compartir o mover</span>
                 <div style="display: flex; gap: 8px;">
                     <button type="button" class="btn btn-secondary" id="btn-card-close">Cerrar</button>
+                    <button type="button" class="btn btn-secondary" id="btn-card-share">👥 Compartir</button>
                     <button type="button" class="btn btn-primary" id="btn-card-edit">✏️ Editar</button>
                 </div>
             </div>
@@ -391,6 +400,16 @@
             <div class="form-group">
                 <label for="task-comments">Notas / Comentarios</label>
                 <textarea id="task-comments" rows="3" placeholder="Detalles adicionales..."></textarea>
+            </div>
+
+            <div class="form-group" style="background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem;">
+                <label for="task-shared-with" style="display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; color: var(--text-main);">
+                    <span>👥</span> Compartir esta tarea (Opcional)
+                </label>
+                <input type="text" id="task-shared-with" placeholder="Correos separados por coma (ej: companero@gmail.com)" class="form-control" style="width: 100%; padding: 0.45rem 0.65rem; margin-top: 4px;">
+                <small style="display: block; margin-top: 4px; color: var(--text-muted); font-size: 0.78rem;">
+                    El destinatario solo verá esta entrada en su agenda, <strong>sin acceso al resto de tus tareas</strong>.
+                </small>
             </div>
 
             <div class="form-group">
@@ -574,14 +593,14 @@
     <script src="./js/firebaseConfig.js"></script>
 
     <!-- App Scripts -->
-    <script src="./js/utils.js?v=18"></script>
-    <script src="./js/auth.js?v=18"></script>
-    <script src="./js/admin.js?v=18"></script>
-    <script src="./js/store.js?v=18"></script>
-    <script src="./js/aiAssistant.js?v=18"></script>
-    <script src="./js/viewYear.js?v=18"></script>
-    <script src="./js/viewMonth.js?v=18"></script>
-    <script src="./js/app.js?v=18"></script>
+    <script src="./js/utils.js?v=19"></script>
+    <script src="./js/auth.js?v=19"></script>
+    <script src="./js/admin.js?v=19"></script>
+    <script src="./js/store.js?v=19"></script>
+    <script src="./js/aiAssistant.js?v=19"></script>
+    <script src="./js/viewYear.js?v=19"></script>
+    <script src="./js/viewMonth.js?v=19"></script>
+    <script src="./js/app.js?v=19"></script>
 </body>
 
 </html>
