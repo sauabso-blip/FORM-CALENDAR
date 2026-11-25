@@ -120,9 +120,15 @@ class AuthManager {
                 this.mainApp.style.display = 'flex';
                 this.db.collection('users').doc(user.uid).get().then(doc => {
                     if (doc.exists) {
-                        this.userNameSpan.textContent = doc.data().name;
+                        this.userNameSpan.textContent = doc.data().name || user.email;
                     } else {
                         this.userNameSpan.textContent = user.email;
+                        // Auto-crear perfil en Firestore si no existía para que aparezca en el panel SU
+                        this.db.collection('users').doc(user.uid).set({
+                            name: user.displayName || user.email.split('@')[0],
+                            email: user.email.toLowerCase(),
+                            createdAt: new Date().toISOString()
+                        }, { merge: true }).catch(err => console.log("Auto-creación doc usuario en login:", err));
                     }
                 }).catch(err => {
                     console.log("No se pudo obtener el nombre:", err);
