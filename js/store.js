@@ -483,8 +483,9 @@ const store = {
             const task = this.state.tasks.find(t => t.id === taskId);
             if (task && Array.isArray(task.attachments)) {
                 for (const att of task.attachments) {
-                    if (att.path) {
-                        try { await this.deleteAttachmentFile(att.path); } catch (e) { }
+                    const fileTarget = att.fileId || att.path;
+                    if (fileTarget) {
+                        try { await this.deleteAttachmentFile(fileTarget); } catch (e) { }
                     }
                 }
             }
@@ -497,50 +498,187 @@ const store = {
         }
     },
 
-    // --- Métodos para Adjuntos ---
-    async uploadAttachment(file) {
-        if (this.isLocal || !storage) {
-            // Conversión local a Data URL (permite ver fotos, reproducir audio, abrir PDF localmente)
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    resolve({
-                        name: file.name,
-                        type: file.type || 'application/octet-stream',
-                        size: file.size || 0,
-                        url: e.target.result,
-                        path: 'local_' + Date.now() + '_' + file.name
-                    });
-                };
-                reader.onerror = () => reject(new Error("Error leyendo archivo local"));
-                reader.readAsDataURL(file);
-            });
+    // --- Métodos para Adjuntos (Opción A: Almacenamiento en Firestore) ---
+    async uploadAttachment(file, onProgress) {
+        if (!file) throw new Error("No se ha seleccionado ningún archivo.");
+
+        // Límite de seguridad para Firestore: 15 MB
+        const maxBytes = 15 * 1024 * 1024;
+        if (file.size > maxBytes) {
+            throw new Error(`El archivo "${file.name}" supera el tamaño máximo permitido de 15 MB para almacenamiento gratuito en la nube.`);
         }
 
-        const user = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
-        const uid = user ? user.uid : 'anonymous';
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const path = `attachments/${uid}/${Date.now()}_${safeName}`;
+        // Leer archivo a Data URL
+        if (typeof onProgress === 'function') onProgress(10);
+        const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = () => reject(new Error("Error leyendo el archivo en el dispositivo."));
+            reader.readAsDataURL(file);
+        });
 
-        const storageRef = storage.ref().child(path);
-        const snapshot = await storageRef.put(file);
-        const url = await snapshot.ref.getDownloadURL();
+        if (typeof onProgress === 'function') onProgress(30);
+
+        // Si estamos en modo local sin conexión o sin Firestore
+        if (this.isLocal || !db) {
+            return {
+                name: file.name,
+                type: file.type || 'application/octet-stream',
+                size: file.size || 0,
+                url: dataUrl,
+                path: 'local_' + Date.now() + '_' + file.name
+            };
+        }
+
+        // Subir a Firestore dividido en trozos (chunks) seguros de 500.000 caracteres (<500 KB por doc)
+        const fileId = 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 7);
+        const CHUNK_SIZE = 500000;
+        const totalChunks = Math.ceil(dataUrl.length / CHUNK_SIZE);
+
+        const fileMeta = {
+            name: file.name,
+            type: file.type || 'application/octet-stream',
+            size: file.size || 0,
+            chunkCount: totalChunks,
+            createdAt: (typeof firebase !== 'undefined' && firebase.firestore && firebase.firestore.FieldValue) ? firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString()
+        };
+
+        if (totalChunks <= 1) {
+            // Archivo pequeño (< 370 KB): cabe directamente en el documento principal
+            fileMeta.data = dataUrl;
+            await db.collection("file_storage").doc(fileId).set(fileMeta);
+            if (typeof onProgress === 'function') onProgress(100);
+        } else {
+            // Archivo más grande (como PDFs de 700 KB a 10 MB): guardar metadatos y chunks
+            await db.collection("file_storage").doc(fileId).set(fileMeta);
+
+            for (let i = 0; i < totalChunks; i++) {
+                const chunkStr = dataUrl.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+                const chunkDocId = String(i).padStart(4, '0');
+                await db.collection("file_storage").doc(fileId).collection("chunks").doc(chunkDocId).set({
+                    index: i,
+                    data: chunkStr
+                });
+                if (typeof onProgress === 'function') {
+                    const pct = Math.round(30 + ((i + 1) / totalChunks) * 70);
+                    onProgress(pct);
+                }
+            }
+        }
 
         return {
             name: file.name,
             type: file.type || 'application/octet-stream',
             size: file.size || 0,
-            url,
-            path
+            fileId: fileId,
+            path: fileId,
+            url: null
         };
     },
 
-    async deleteAttachmentFile(path) {
-        if (this.isLocal || !storage || !path || path.startsWith('local_')) return;
-        try {
-            await storage.ref().child(path).delete();
-        } catch (err) {
-            console.warn("No se pudo eliminar el archivo de Storage:", path, err);
+    async getAttachmentBlobUrl(attachment) {
+        if (!attachment) throw new Error("No hay información de archivo.");
+        if (attachment._blobUrl) return attachment._blobUrl;
+
+        // Si ya tiene una URL web válida o Blob
+        if (attachment.url && (attachment.url.startsWith('http://') || attachment.url.startsWith('https://') || attachment.url.startsWith('blob:'))) {
+            return attachment.url;
+        }
+
+        // Si es una Data URL ya en memoria o guardada localmente
+        if (attachment.url && attachment.url.startsWith('data:')) {
+            const blob = this._dataUrlToBlob(attachment.url, attachment.type);
+            const blobUrl = URL.createObjectURL(blob);
+            attachment._blobUrl = blobUrl;
+            return blobUrl;
+        }
+
+        const fileId = attachment.fileId || attachment.path;
+        if (!fileId || this.isLocal || !db) {
+            if (attachment.url) return attachment.url;
+            throw new Error("El archivo no está disponible sin conexión.");
+        }
+
+        // Recuperar desde la colección file_storage de Firestore
+        const fileDoc = await db.collection("file_storage").doc(fileId).get();
+        if (!fileDoc.exists) {
+            // Respaldo por si fuera una referencia antigua de Firebase Storage
+            if (typeof storage !== 'undefined' && storage && attachment.path && attachment.path.includes('/')) {
+                try {
+                    return await storage.ref().child(attachment.path).getDownloadURL();
+                } catch (e) { }
+            }
+            throw new Error("El archivo no se encuentra en la base de datos.");
+        }
+
+        const meta = fileDoc.data();
+        let fullDataUrl = '';
+
+        if (meta.data) {
+            fullDataUrl = meta.data;
+        } else if (meta.chunkCount > 1) {
+            const chunksSnap = await db.collection("file_storage").doc(fileId).collection("chunks").orderBy("index").get();
+            const parts = [];
+            chunksSnap.forEach(c => parts.push(c.data().data));
+            fullDataUrl = parts.join('');
+        }
+
+        if (!fullDataUrl) {
+            throw new Error("El contenido del archivo está vacío o dañado.");
+        }
+
+        const blob = this._dataUrlToBlob(fullDataUrl, meta.type || attachment.type);
+        const blobUrl = URL.createObjectURL(blob);
+        attachment._blobUrl = blobUrl;
+        return blobUrl;
+    },
+
+    _dataUrlToBlob(dataUrl, defaultType = 'application/octet-stream') {
+        const parts = dataUrl.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : defaultType;
+        const b64Data = parts[1] || '';
+        const byteCharacters = atob(b64Data);
+        const byteArrays = [];
+        const sliceSize = 1024;
+
+        for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+            const slice = byteCharacters.slice(offset, offset + sliceSize);
+            const byteNumbers = new Array(slice.length);
+            for (let i = 0; i < slice.length; i++) {
+                byteNumbers[i] = slice.charCodeAt(i);
+            }
+            byteArrays.push(new Uint8Array(byteNumbers));
+        }
+
+        return new Blob(byteArrays, { type: mime });
+    },
+
+    async deleteAttachmentFile(fileTarget) {
+        if (!fileTarget || fileTarget.startsWith('local_')) return;
+
+        // Eliminación de Firestore
+        if (db && (fileTarget.startsWith('file_') || !fileTarget.includes('/'))) {
+            try {
+                const chunksSnap = await db.collection("file_storage").doc(fileTarget).collection("chunks").get();
+                const batch = db.batch();
+                chunksSnap.forEach(doc => batch.delete(doc.ref));
+                batch.delete(db.collection("file_storage").doc(fileTarget));
+                await batch.commit();
+                console.log("Archivo eliminado de Firestore:", fileTarget);
+            } catch (err) {
+                console.warn("Error eliminando archivo de Firestore:", fileTarget, err);
+            }
+            return;
+        }
+
+        // Respaldo para Storage antiguo
+        if (typeof storage !== 'undefined' && storage && fileTarget.includes('/')) {
+            try {
+                await storage.ref().child(fileTarget).delete();
+            } catch (err) {
+                console.warn("No se pudo eliminar el archivo de Storage:", fileTarget, err);
+            }
         }
     },
 

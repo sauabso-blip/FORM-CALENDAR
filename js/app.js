@@ -195,7 +195,11 @@ class App {
                         if (statusDiv) {
                             statusDiv.textContent = `Subiendo (${i + 1}/${newFiles.length}): ${newFiles[i].name}...`;
                         }
-                        const uploaded = await this.store.uploadAttachment(newFiles[i]);
+                        const uploaded = await this.store.uploadAttachment(newFiles[i], (pct) => {
+                            if (statusDiv) {
+                                statusDiv.textContent = `Subiendo (${i + 1}/${newFiles.length}): ${newFiles[i].name} (${Math.round(pct)}%)...`;
+                            }
+                        });
                         uploadedAttachments.push(uploaded);
                     }
                 }
@@ -767,24 +771,53 @@ class App {
             const sizeKB = att.size ? ` (${Math.max(1, Math.round(att.size / 1024))} KB)` : '';
 
             const link = document.createElement('a');
-            link.href = att.url;
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
+            link.href = att.url || '#';
             link.className = 'attachment-link';
             link.textContent = `${icon} ${att.name}${sizeKB}`;
+            link.style.cursor = 'pointer';
+            link.onclick = async (e) => {
+                e.preventDefault();
+                try {
+                    const originalText = link.textContent;
+                    link.textContent = `⏳ Abriendo ${att.name}...`;
+                    const blobUrl = await this.store.getAttachmentBlobUrl(att);
+                    link.textContent = originalText;
+                    window.open(blobUrl, '_blank');
+                } catch (err) {
+                    console.error("Error abriendo adjunto:", err);
+                    alert("No se pudo abrir el archivo: " + err.message);
+                }
+            };
             info.appendChild(link);
 
             if (att.type && att.type.startsWith('image/')) {
                 const img = document.createElement('img');
-                img.src = att.url;
                 img.alt = att.name;
                 img.className = 'attachment-preview-img';
+                img.style.cursor = 'pointer';
+                if (att.url) {
+                    img.src = att.url;
+                } else {
+                    this.store.getAttachmentBlobUrl(att).then(url => {
+                        img.src = url;
+                    }).catch(console.warn);
+                }
+                img.onclick = async () => {
+                    const blobUrl = await this.store.getAttachmentBlobUrl(att);
+                    window.open(blobUrl, '_blank');
+                };
                 info.appendChild(img);
             } else if (att.type && att.type.startsWith('audio/')) {
                 const audio = document.createElement('audio');
                 audio.controls = true;
-                audio.src = att.url;
                 audio.className = 'attachment-audio';
+                if (att.url) {
+                    audio.src = att.url;
+                } else {
+                    this.store.getAttachmentBlobUrl(att).then(url => {
+                        audio.src = url;
+                    }).catch(console.warn);
+                }
                 info.appendChild(audio);
             }
 
@@ -795,8 +828,11 @@ class App {
             removeBtn.innerHTML = '&times;';
             removeBtn.onclick = () => {
                 const removed = this.currentAttachments.splice(index, 1)[0];
-                if (removed && removed.path) {
-                    this.attachmentsToDelete.push(removed.path);
+                if (removed) {
+                    const fileTarget = removed.fileId || removed.path;
+                    if (fileTarget) {
+                        this.attachmentsToDelete.push(fileTarget);
+                    }
                 }
                 this._renderAttachmentsList();
             };
@@ -1187,24 +1223,53 @@ class App {
                     const sizeKB = att.size ? ` (${Math.max(1, Math.round(att.size / 1024))} KB)` : '';
 
                     const link = document.createElement('a');
-                    link.href = att.url;
-                    link.target = '_blank';
-                    link.rel = 'noopener noreferrer';
+                    link.href = att.url || '#';
                     link.className = 'attachment-link';
                     link.textContent = `${icon} ${att.name}${sizeKB}`;
+                    link.style.cursor = 'pointer';
+                    link.onclick = async (e) => {
+                        e.preventDefault();
+                        try {
+                            const originalText = link.textContent;
+                            link.textContent = `⏳ Abriendo ${att.name}...`;
+                            const blobUrl = await this.store.getAttachmentBlobUrl(att);
+                            link.textContent = originalText;
+                            window.open(blobUrl, '_blank');
+                        } catch (err) {
+                            console.error("Error abriendo adjunto:", err);
+                            alert("No se pudo abrir el archivo: " + err.message);
+                        }
+                    };
                     info.appendChild(link);
 
                     if (att.type && att.type.startsWith('image/')) {
                         const img = document.createElement('img');
-                        img.src = att.url;
                         img.alt = att.name;
                         img.className = 'attachment-preview-img';
+                        img.style.cursor = 'pointer';
+                        if (att.url) {
+                            img.src = att.url;
+                        } else {
+                            this.store.getAttachmentBlobUrl(att).then(url => {
+                                img.src = url;
+                            }).catch(console.warn);
+                        }
+                        img.onclick = async () => {
+                            const blobUrl = await this.store.getAttachmentBlobUrl(att);
+                            window.open(blobUrl, '_blank');
+                        };
                         info.appendChild(img);
                     } else if (att.type && att.type.startsWith('audio/')) {
                         const audio = document.createElement('audio');
                         audio.controls = true;
-                        audio.src = att.url;
                         audio.className = 'attachment-audio';
+                        if (att.url) {
+                            audio.src = att.url;
+                        } else {
+                            this.store.getAttachmentBlobUrl(att).then(url => {
+                                audio.src = url;
+                            }).catch(console.warn);
+                        }
                         info.appendChild(audio);
                     }
 
