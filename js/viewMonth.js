@@ -206,6 +206,9 @@ class MonthView {
         taskElement.addEventListener('mouseenter', (e) => {
             this._showTooltip(e, task, category);
         });
+        taskElement.addEventListener('mousemove', (e) => {
+            this._positionTooltip(e);
+        });
         taskElement.addEventListener('mouseleave', () => {
             this._hideTooltip();
         });
@@ -328,50 +331,143 @@ class MonthView {
         return map[reminder] || '';
     }
 
+    _escapeHTML(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
     _showTooltip(e, task, category) {
         const reminderLabel = this._formatReminder(task.reminder);
-        const amountRow = (task.amount && task.amount > 0)
-            ? `<div class="tooltip-row"><span class="tooltip-label">Importe:</span> <strong>${Number(task.amount).toFixed(2)} €</strong></div>`
-            : '';
+        const categoryName = category ? category.name : 'General';
+        const categoryColor = (category && category.color) ? category.color : '#3b82f6';
+
+        // Periodo
+        let periodStr = task.startDate;
+        if (task.endDate && task.endDate !== task.startDate) {
+            periodStr = `${task.startDate} ➜ ${task.endDate}`;
+        }
+        const periodRow = `<div class="tooltip-row"><span class="tooltip-label">Periodo:</span> <span>${periodStr}</span></div>`;
+
         const timeRow = task.time
-            ? `<div class="tooltip-row"><span class="tooltip-label">Hora:</span> ${task.time}</div>`
+            ? `<div class="tooltip-row"><span class="tooltip-label">Hora:</span> <span>⏰ ${task.time}</span></div>`
+            : '';
+        const amountRow = (task.amount && task.amount > 0)
+            ? `<div class="tooltip-row"><span class="tooltip-label">Importe:</span> <strong style="color: #34d399;">💶 ${Number(task.amount).toFixed(2)} €</strong></div>`
             : '';
         const reminderRow = reminderLabel
-            ? `<div class="tooltip-row"><span class="tooltip-label">Aviso:</span> 🔔 ${reminderLabel}</div>`
+            ? `<div class="tooltip-row"><span class="tooltip-label">Aviso:</span> <span>🔔 ${reminderLabel}</span></div>`
             : '';
         const locationRow = task.location
-            ? `<div class="tooltip-row"><span class="tooltip-label">Lugar:</span> ${task.location}</div>`
+            ? `<div class="tooltip-row"><span class="tooltip-label">Lugar:</span> <span>📍 ${this._escapeHTML(task.location)}</span></div>`
             : '';
         const attachmentsRow = (task.attachments && task.attachments.length > 0)
-            ? `<div class="tooltip-row"><span class="tooltip-label">Adjuntos:</span> 📎 ${task.attachments.length} archivo(s)</div>`
+            ? `<div class="tooltip-row"><span class="tooltip-label">Adjuntos:</span> <span>📎 ${task.attachments.length} archivo(s)</span></div>`
             : '';
 
         const ownerRow = (task.ownerEmail && this.store.isSharedTask && this.store.isSharedTask(task))
-            ? `<div class="tooltip-row" style="color: #4f46e5; font-weight: 600;"><span class="tooltip-label">Agenda:</span> 👥 ${task.ownerName || task.ownerEmail}</div>`
+            ? `<div class="tooltip-row" style="color: #818cf8; font-weight: 600;"><span class="tooltip-label">Agenda:</span> <span>👥 ${this._escapeHTML(task.ownerName || task.ownerEmail)}</span></div>`
             : (Array.isArray(task.sharedWith) && task.sharedWith.length > 0)
-                ? `<div class="tooltip-row" style="color: #059669; font-weight: 600;"><span class="tooltip-label">Compartida con:</span> 📤 ${task.sharedWith.join(', ')}</div>`
+                ? `<div class="tooltip-row" style="color: #34d399; font-weight: 600;"><span class="tooltip-label">Compartida:</span> <span>📤 con ${this._escapeHTML(task.sharedWith.join(', '))}</span></div>`
                 : '';
 
+        // Notas (Mitad derecha completa)
+        const hasNotes = task.comments && task.comments.trim().length > 0;
+        const notesHTML = hasNotes
+            ? `<div class="tooltip-notes-body">${this._escapeHTML(task.comments.trim())}</div>`
+            : `<div class="tooltip-notes-body tooltip-notes-empty">Sin notas adicionales</div>`;
+
         this.tooltip.innerHTML = `
-            <div class="tooltip-title">${task.name}</div>
-            ${ownerRow}
-            <div class="tooltip-row"><span class="tooltip-label">Categoría:</span> ${category ? category.name : 'N/A'}</div>
-            ${amountRow}
-            ${timeRow}
-            ${reminderRow}
-            ${locationRow}
-            ${attachmentsRow}
-            <hr>
-            <div class="tooltip-row"><span class="tooltip-label">Inicio:</span> ${task.startDate}</div>
-            <div class="tooltip-row"><span class="tooltip-label">Fin:</span> ${task.endDate}</div>
+            <div class="tooltip-container">
+                <div class="tooltip-col-main">
+                    <div class="tooltip-title">${this._escapeHTML(task.name)}</div>
+                    ${ownerRow}
+                    <div class="tooltip-row">
+                        <span class="tooltip-label">Categoría:</span>
+                        <span class="tooltip-cat-badge" style="background:${categoryColor}">${this._escapeHTML(categoryName)}</span>
+                    </div>
+                    ${periodRow}
+                    ${timeRow}
+                    ${amountRow}
+                    ${reminderRow}
+                    ${locationRow}
+                    ${attachmentsRow}
+                </div>
+                <div class="tooltip-col-notes">
+                    <div class="tooltip-notes-header">📝 Notas y detalles:</div>
+                    ${notesHTML}
+                </div>
+            </div>
         `;
-        this.tooltip.style.left = `${e.pageX + 10}px`;
-        this.tooltip.style.top = `${e.pageY + 10}px`;
+
+        this._positionTooltip(e);
+    }
+
+    _positionTooltip(e) {
+        if (!this.tooltip) return;
+
+        let clientX = e.clientX;
+        let clientY = e.clientY;
+
+        if (clientX === undefined) {
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else if (e.pageX !== undefined) {
+                clientX = e.pageX - window.scrollX;
+                clientY = e.pageY - window.scrollY;
+            } else {
+                clientX = window.innerWidth / 2;
+                clientY = window.innerHeight / 2;
+            }
+        }
+
+        // Render first to measure dimensions without flicker
+        this.tooltip.style.visibility = 'hidden';
         this.tooltip.style.display = 'block';
+
+        const rect = this.tooltip.getBoundingClientRect();
+        const tooltipW = rect.width || 580;
+        const tooltipH = rect.height || 220;
+
+        const pad = 12; // Margin from viewport edges
+        const mouseOffset = 14;
+
+        let left = clientX + mouseOffset;
+        let top = clientY + mouseOffset;
+
+        // Si se sale por la derecha, voltear a la izquierda del cursor
+        if (left + tooltipW > window.innerWidth - pad) {
+            left = clientX - tooltipW - mouseOffset;
+        }
+
+        // Si volteado a la izquierda se sale por el borde izquierdo, ajustar a margen seguro
+        if (left < pad) {
+            left = Math.max(pad, window.innerWidth - tooltipW - pad);
+        }
+
+        // Si se sale por abajo, voltear hacia arriba del cursor
+        if (top + tooltipH > window.innerHeight - pad) {
+            top = clientY - tooltipH - mouseOffset;
+        }
+
+        // Si volteado hacia arriba se sale por el borde superior, ajustar a margen seguro
+        if (top < pad) {
+            top = Math.max(pad, window.innerHeight - tooltipH - pad);
+        }
+
+        this.tooltip.style.left = `${Math.round(left)}px`;
+        this.tooltip.style.top = `${Math.round(top)}px`;
+        this.tooltip.style.visibility = 'visible';
     }
 
     _hideTooltip() {
-        this.tooltip.style.display = 'none';
+        if (this.tooltip) {
+            this.tooltip.style.display = 'none';
+        }
     }
 }
 window.MonthView = MonthView;
