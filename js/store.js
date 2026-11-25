@@ -63,6 +63,27 @@ const store = {
         };
     },
 
+    _updateSyncBadge(status) {
+        const badge = document.getElementById('sync-status-badge');
+        if (!badge) return;
+        if (status === 'cloud') {
+            badge.textContent = '☁️ En la nube';
+            badge.style.background = '#dcfce7';
+            badge.style.color = '#15803d';
+            badge.title = 'Conectado a Firebase Firestore. Tareas sincronizadas en tiempo real.';
+        } else if (status === 'local') {
+            badge.textContent = '⚠️ Modo Local';
+            badge.style.background = '#fef3c7';
+            badge.style.color = '#b45309';
+            badge.title = 'Trabajando en almacenamiento local del dispositivo. Inicia sesión para sincronizar.';
+        } else if (status === 'error') {
+            badge.textContent = '❌ Error Nube';
+            badge.style.background = '#fee2e2';
+            badge.style.color = '#b91c1c';
+            badge.title = 'Error de conexión o permisos en Firestore. Revisa las reglas de seguridad.';
+        }
+    },
+
     initialize: function (callback, forceLocal = false) {
         if (typeof callback === 'function') this.subscribe(callback);
 
@@ -76,6 +97,7 @@ const store = {
             console.log("Store: Inicializando en Modo Local (LocalStorage)...");
             this.isLocal = true;
             this._loadLocal();
+            this._updateSyncBadge('local');
             this._notify();
             return;
         }
@@ -92,6 +114,7 @@ const store = {
 
         const catUnsub = db.collection("categories").onSnapshot(async snapshot => {
             console.log(`Store: Recibidas ${snapshot.docs.length} categorías.`);
+            this._updateSyncBadge('cloud');
 
             if (snapshot.empty && !this._seededDefaults) {
                 this._seededDefaults = true;
@@ -133,6 +156,7 @@ const store = {
             this._notify();
         }, err => {
             console.warn("Aviso en listener de categorías en Firestore:", err);
+            this._updateSyncBadge('error');
             if (!this.state.categories || this.state.categories.length === 0) {
                 this._loadLocal();
                 this._notify();
@@ -142,6 +166,7 @@ const store = {
 
         const taskUnsub = db.collection("tasks").onSnapshot(snapshot => {
             console.log(`Store: Recibidas ${snapshot.docs.length} entradas desde Firestore.`);
+            this._updateSyncBadge('cloud');
             this.state.tasks = snapshot.docs.map(doc => {
                 const data = doc.data();
                 const rawCategoryId = data.categoryId || data.calendarId || data.calendar_id || data.category;
@@ -160,6 +185,7 @@ const store = {
             this._notify();
         }, err => {
             console.warn("Aviso en listener de tareas en Firestore:", err);
+            this._updateSyncBadge('error');
             // No forzamos permanentemente modo local para permitir reintentos cuando el auth esté listo
             if (!this.state.tasks || this.state.tasks.length === 0) {
                 this._loadLocal();
@@ -396,9 +422,11 @@ const store = {
         try {
             this.isLocal = false;
             const ref = await db.collection("tasks").add(dataWithOwner);
+            this._updateSyncBadge('cloud');
             return ref.id;
         } catch (err) {
-            console.warn("Fallo escribiendo tarea en Firestore (guardando local):", err);
+            console.error("Fallo escribiendo tarea en Firestore:", err);
+            this._updateSyncBadge('error');
             const newTask = {
                 id: 'task_' + Date.now() + Math.random().toString(36).substr(2, 4),
                 ...dataWithOwner
@@ -406,6 +434,9 @@ const store = {
             this.state.tasks.push(newTask);
             this._saveLocalTasks();
             this._notify();
+            if (err.code === 'permission-denied' || (err.message && err.message.toLowerCase().includes('permission'))) {
+                alert("⚠️ Aviso Firebase (Permiso Denegado):\nLa tarea se ha guardado solo en este dispositivo porque las Reglas de Seguridad en tu consola de Firebase están bloqueando la escritura en la nube.\n\nPor favor, revisa la pestaña 'Reglas' en Firestore.");
+            }
             return newTask.id;
         }
     },
