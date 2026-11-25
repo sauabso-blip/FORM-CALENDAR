@@ -177,6 +177,10 @@ class AuthManager {
                         if (typeof store !== 'undefined' && store.syncLocalTasksToFirestore) {
                             setTimeout(() => store.syncLocalTasksToFirestore(), 500);
                         }
+                        // Sincronizar ajustes de IA entre dispositivos
+                        if (window._appInstance.aiAssistant && typeof window._appInstance.aiAssistant.syncFromFirestoreProfile === 'function') {
+                            setTimeout(() => window._appInstance.aiAssistant.syncFromFirestoreProfile(), 500);
+                        }
                     }
                 };
 

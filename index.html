@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=5.0, user-scalable=yes">
     <title>Agenda Personal</title>
-    <link rel="stylesheet" href="./css/styles.css?v=22">
+    <link rel="stylesheet" href="./css/styles.css?v=23">
 </head>
 
 <body>
@@ -229,11 +229,9 @@
                             <label for="ai-config-model">Nombre del Modelo</label>
                             <div style="display: flex; gap: 8px; margin-bottom: 6px;">
                                 <select id="ai-config-model-select" style="flex: 1; padding: 0.5rem; border: 1px solid var(--border); border-radius: 0.375rem;">
-                                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Rápido y ligero)</option>
-                                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Alta inteligencia)</option>
-                                    <option value="llama3-8b-8192">llama3-8b-8192</option>
-                                    <option value="gemma2-9b-it">gemma2-9b-it</option>
-                                    <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Recomendado - Rápido)</option>
+                                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Alta Inteligencia)</option>
+                                    <option value="gemma2-9b-it">gemma2-9b-it (Google Gemma 2)</option>
                                     <option value="custom">-- Escribir manualmente abajo --</option>
                                 </select>
                                 <button type="button" id="btn-detect-ai-models" class="btn btn-secondary btn-sm" title="Consultar modelos disponibles en tu cuenta">🔄 Detectar Modelos</button>
@@ -595,15 +593,15 @@
     <script src="./js/firebaseConfig.js"></script>
 
     <!-- App Scripts -->
-    <script src="./js/utils.js?v=22"></script>
-    <script src="./js/auth.js?v=22"></script>
-    <script src="./js/admin.js?v=22"></script>
-    <script src="./js/store.js?v=22"></script>
-    <script src="./js/aiAssistant.js?v=22"></script>
-    <script src="./js/viewYear.js?v=22"></script>
-    <script src="./js/viewMonth.js?v=22"></script>
-    <script src="./js/viewWeek.js?v=22"></script>
-    <script src="./js/app.js?v=22"></script>
+    <script src="./js/utils.js?v=23"></script>
+    <script src="./js/auth.js?v=23"></script>
+    <script src="./js/admin.js?v=23"></script>
+    <script src="./js/store.js?v=23"></script>
+    <script src="./js/aiAssistant.js?v=23"></script>
+    <script src="./js/viewYear.js?v=23"></script>
+    <script src="./js/viewMonth.js?v=23"></script>
+    <script src="./js/viewWeek.js?v=23"></script>
+    <script src="./js/app.js?v=23"></script>
 </body>
 
 </html>

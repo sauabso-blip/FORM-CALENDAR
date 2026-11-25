@@ -63,7 +63,7 @@ const store = {
         };
     },
 
-    _updateSyncBadge(status) {
+    _updateSyncBadge(status, detail = '') {
         const badge = document.getElementById('sync-status-badge');
         if (!badge) return;
         if (status === 'cloud') {
@@ -71,16 +71,24 @@ const store = {
             badge.style.background = '#dcfce7';
             badge.style.color = '#15803d';
             badge.title = 'Conectado a Firebase Firestore. Tareas sincronizadas en tiempo real.';
+            badge.onclick = null;
+            badge.style.cursor = 'default';
         } else if (status === 'local') {
             badge.textContent = '⚠️ Modo Local';
             badge.style.background = '#fef3c7';
             badge.style.color = '#b45309';
             badge.title = 'Trabajando en almacenamiento local del dispositivo. Inicia sesión para sincronizar.';
+            badge.onclick = null;
+            badge.style.cursor = 'default';
         } else if (status === 'error') {
             badge.textContent = '❌ Error Nube';
             badge.style.background = '#fee2e2';
             badge.style.color = '#b91c1c';
-            badge.title = 'Error de conexión o permisos en Firestore. Revisa las reglas de seguridad.';
+            badge.title = 'Error en Firestore: ' + (detail || 'Permiso denegado') + '. Haz clic aquí para ver detalles.';
+            badge.style.cursor = 'pointer';
+            badge.onclick = () => {
+                alert("❌ Error de conexión con Firebase Firestore:\n\n" + (detail || "Permiso denegado (Missing or insufficient permissions)") + "\n\nCausa habitual: Las Reglas de Seguridad en tu consola de Firebase están bloqueando el acceso.\n\nSolución:\n1. Entra en console.firebase.google.com\n2. Abre tu proyecto (personalcalendar-741d7)\n3. Ve a Firestore Database -> Pestaña Reglas (Rules)\n4. Pega:\n   allow read, write: if request.auth != null;\n5. Pulsa Publicar.");
+            };
         }
     },
 
@@ -156,7 +164,7 @@ const store = {
             this._notify();
         }, err => {
             console.warn("Aviso en listener de categorías en Firestore:", err);
-            this._updateSyncBadge('error');
+            this._updateSyncBadge('error', err.message || err.code || String(err));
             if (!this.state.categories || this.state.categories.length === 0) {
                 this._loadLocal();
                 this._notify();
@@ -185,7 +193,7 @@ const store = {
             this._notify();
         }, err => {
             console.warn("Aviso en listener de tareas en Firestore:", err);
-            this._updateSyncBadge('error');
+            this._updateSyncBadge('error', err.message || err.code || String(err));
             // No forzamos permanentemente modo local para permitir reintentos cuando el auth esté listo
             if (!this.state.tasks || this.state.tasks.length === 0) {
                 this._loadLocal();

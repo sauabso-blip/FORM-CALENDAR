@@ -18,6 +18,12 @@ class AIAssistant {
         let key = (localStorage.getItem('agenda_ai_key') || '').trim();
         let model = (localStorage.getItem('agenda_ai_model') || 'llama-3.1-8b-instant').trim().replace(/[`'"]/g, '');
 
+        // Auto-corregir modelos obsoletos de Groq o modelos vacíos
+        if (!model || model === 'llama3-8b-8192' || model === 'mixtral-8x7b-32768') {
+            model = 'llama-3.1-8b-instant';
+            localStorage.setItem('agenda_ai_model', model);
+        }
+
         // Si la clave es de Groq (empieza por gsk_), forzar endpoint de Groq si estaba en localhost
         if (key.startsWith('gsk_') && !ep.includes('groq.com')) {
             ep = 'https://api.groq.com/openai/v1';
@@ -28,6 +34,42 @@ class AIAssistant {
         this.apiKey = key;
         this.model = model;
         this._updateStatusLabel();
+
+        // Intentar sincronizar ajustes guardados en la cuenta de Firebase si la clave local está vacía
+        this.syncFromFirestoreProfile();
+    }
+
+    async syncFromFirestoreProfile() {
+        try {
+            if (typeof firebase === 'undefined' || !firebase.auth || !firebase.auth().currentUser || !firebase.firestore) return;
+            const uid = firebase.auth().currentUser.uid;
+            const doc = await firebase.firestore().collection('users').doc(uid).get();
+            if (doc.exists && doc.data().aiSettings) {
+                const s = doc.data().aiSettings;
+                let changed = false;
+                if (s.apiKey && (!this.apiKey || this.apiKey !== s.apiKey)) {
+                    this.apiKey = s.apiKey;
+                    localStorage.setItem('agenda_ai_key', this.apiKey);
+                    changed = true;
+                }
+                if (s.endpoint && (!this.endpoint || this.endpoint !== s.endpoint)) {
+                    this.endpoint = s.endpoint;
+                    localStorage.setItem('agenda_ai_endpoint', this.endpoint);
+                    changed = true;
+                }
+                if (s.model && (!this.model || this.model !== s.model)) {
+                    this.model = s.model;
+                    localStorage.setItem('agenda_ai_model', this.model);
+                    changed = true;
+                }
+                if (changed) {
+                    this._updateStatusLabel();
+                    this._bindConfigUI();
+                }
+            }
+        } catch (e) {
+            console.warn("Aviso al consultar aiSettings de Firestore:", e);
+        }
     }
 
     _updateStatusLabel() {
@@ -36,15 +78,18 @@ class AIAssistant {
         const isGroq = (this.endpoint || '').includes('groq.com');
         const isOllama = (this.endpoint || '').includes('localhost') || (this.endpoint || '').includes('11434');
         const provName = isGroq ? 'Groq Cloud' : (isOllama ? 'Ollama Local' : 'API');
-        label.textContent = `${provName} (${this.model || 'Sin modelo'})`;
+        label.textContent = `${provName} (${this.model || 'llama-3.1-8b-instant'})`;
         label.title = `Endpoint: ${this.endpoint}\nModelo: ${this.model}`;
     }
 
-    saveSettings(endpoint, apiKey, model) {
+    saveSettings(endpoint, apiKey, model, syncToFirestore = true) {
         let ep = (endpoint || 'https://api.groq.com/openai/v1').trim().replace(/\/+$/, '');
         let key = (apiKey || '').trim();
         let mdl = (model || 'llama-3.1-8b-instant').trim().replace(/[`'"]/g, '');
 
+        if (!mdl || mdl === 'llama3-8b-8192' || mdl === 'mixtral-8x7b-32768') {
+            mdl = 'llama-3.1-8b-instant';
+        }
         if (ep.includes('api.groq.com') && !ep.includes('/openai/v1')) {
             ep = 'https://api.groq.com/openai/v1';
         }
@@ -61,6 +106,19 @@ class AIAssistant {
         localStorage.setItem('agenda_ai_model', this.model);
 
         this._updateStatusLabel();
+
+        // Guardar también en la cuenta del usuario en Firestore para sincronización transparente con el móvil
+        if (syncToFirestore && typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser && firebase.firestore) {
+            const uid = firebase.auth().currentUser.uid;
+            firebase.firestore().collection('users').doc(uid).set({
+                aiSettings: {
+                    endpoint: this.endpoint,
+                    apiKey: this.apiKey,
+                    model: this.model,
+                    updatedAt: new Date().toISOString()
+                }
+            }, { merge: true }).catch(err => console.warn("Aviso guardando aiSettings en Firestore:", err));
+        }
     }
 
     _bindUI() {
