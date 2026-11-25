@@ -48,6 +48,33 @@ class AuthManager {
 
         document.getElementById('form-login')?.addEventListener('submit', (e) => this._handleLogin(e));
         document.getElementById('form-register')?.addEventListener('submit', (e) => this._handleRegister(e));
+
+        document.getElementById('btn-forgot-password')?.addEventListener('click', async () => {
+            this._clearMsg();
+            let email = document.getElementById('login-email')?.value?.trim();
+            if (!email) {
+                email = prompt("Introduce tu correo electrónico para restablecer tu contraseña:");
+            }
+            if (!email) return;
+
+            this._showLoading(true, "Enviando enlace de recuperación...");
+            try {
+                await this.auth.sendPasswordResetEmail(email.trim().toLowerCase());
+                this._showLoading(false);
+                this._showMsg(`✅ Se ha enviado un correo oficial a "${email}". Revisa tu bandeja de entrada (y la carpeta Spam) para poner una nueva contraseña.`, false);
+            } catch (err) {
+                this._showLoading(false);
+                console.error("Error al enviar email de restablecimiento:", err);
+                let friendlyMsg = err.message;
+                if (err.code === 'auth/user-not-found') {
+                    friendlyMsg = "No existe ninguna cuenta registrada con este correo.";
+                } else if (err.code === 'auth/invalid-email') {
+                    friendlyMsg = "El formato de correo no es válido.";
+                }
+                this._showMsg("Error: " + friendlyMsg, true);
+            }
+        });
+
         document.getElementById('btn-logout')?.addEventListener('click', () => {
             if (this.isLocalMode) {
                 this.isLocalMode = false;
