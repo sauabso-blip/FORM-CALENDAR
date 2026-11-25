@@ -182,6 +182,9 @@ class MonthView {
         taskElement.className = 'month-task-item';
 
         let badges = '';
+        if (task.ownerEmail && this.store.isSharedTask && this.store.isSharedTask(task)) {
+            badges += ` [👥 ${task.ownerName || task.ownerEmail.split('@')[0]}]`;
+        }
         if (task.time) badges += ` ${task.time}`;
         if (task.reminder && task.reminder !== 'none') badges += ' 🔔';
         if (task.amount && task.amount > 0) badges += ` 💶${Number(task.amount).toFixed(2)}€`;
@@ -341,8 +344,13 @@ class MonthView {
             ? `<div class="tooltip-row"><span class="tooltip-label">Adjuntos:</span> 📎 ${task.attachments.length} archivo(s)</div>`
             : '';
 
+        const ownerRow = (task.ownerEmail && this.store.isSharedTask && this.store.isSharedTask(task))
+            ? `<div class="tooltip-row" style="color: #4f46e5; font-weight: 600;"><span class="tooltip-label">Agenda:</span> 👥 ${task.ownerName || task.ownerEmail}</div>`
+            : '';
+
         this.tooltip.innerHTML = `
             <div class="tooltip-title">${task.name}</div>
+            ${ownerRow}
             <div class="tooltip-row"><span class="tooltip-label">Categoría:</span> ${category ? category.name : 'N/A'}</div>
             ${amountRow}
             ${timeRow}

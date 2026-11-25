@@ -28,7 +28,9 @@ const store = {
     state: {
         categories: [],
         tasks: [],
+        shares: []
     },
+    activeCalendarFilter: 'mine', // 'mine' | 'all' | ownerEmail
     isLocal: false,
     _seededDefaults: false,
     _listeners: [],
@@ -41,6 +43,24 @@ const store = {
         this._listeners.forEach(fn => {
             try { fn(); } catch (e) { console.error("Store listener error:", e); }
         });
+    },
+
+    getCurrentUser() {
+        if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+            const u = firebase.auth().currentUser;
+            const nameEl = document.getElementById('current-user-name');
+            const userName = (nameEl && nameEl.textContent) ? nameEl.textContent.trim() : (u.displayName || (u.email ? u.email.split('@')[0] : 'Usuario'));
+            return {
+                uid: u.uid,
+                email: (u.email || '').toLowerCase(),
+                name: userName
+            };
+        }
+        return {
+            uid: 'local_user',
+            email: 'local@agenda.personal',
+            name: 'Modo Local'
+        };
     },
 
     initialize: function (callback, forceLocal = false) {
@@ -141,11 +161,23 @@ const store = {
                 this._notify();
             }
         });
+
+        // Subscripción a calendarios compartidos
+        const sharesUnsub = db.collection("calendar_shares").onSnapshot(snapshot => {
+            console.log(`Store: Recibidos ${snapshot.docs.length} registros de calendarios compartidos.`);
+            this.state.shares = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            this._notify();
+        }, err => {
+            console.warn("Fallo en listener de calendar_shares (usando local):", err);
+            this._loadLocalShares();
+            this._notify();
+        });
     },
 
     _loadLocal() {
         const storedCats = localStorage.getItem('agenda_local_categories');
         const storedTasks = localStorage.getItem('agenda_local_tasks');
+        this._loadLocalShares();
 
         if (storedCats) {
             try {
@@ -199,6 +231,23 @@ const store = {
 
     _saveLocalTasks() {
         localStorage.setItem('agenda_local_tasks', JSON.stringify(this.state.tasks));
+    },
+
+    _loadLocalShares() {
+        const stored = localStorage.getItem('agenda_local_shares');
+        if (stored) {
+            try {
+                this.state.shares = JSON.parse(stored);
+            } catch (e) {
+                this.state.shares = [];
+            }
+        } else {
+            this.state.shares = [];
+        }
+    },
+
+    _saveLocalShares() {
+        localStorage.setItem('agenda_local_shares', JSON.stringify(this.state.shares));
     },
 
     // --- Métodos de Escritura (Categorías y Tareas) ---
@@ -270,10 +319,18 @@ const store = {
     },
 
     async addTask(taskData) {
+        const currentUser = this.getCurrentUser();
+        const dataWithOwner = {
+            ...taskData,
+            ownerEmail: (taskData.ownerEmail || currentUser.email).toLowerCase(),
+            ownerName: taskData.ownerName || currentUser.name,
+            ownerUid: taskData.ownerUid || currentUser.uid
+        };
+
         if (this.isLocal || !db) {
             const newTask = {
                 id: 'task_' + Date.now() + Math.random().toString(36).substr(2, 4),
-                ...taskData
+                ...dataWithOwner
             };
             this.state.tasks.push(newTask);
             this._saveLocalTasks();
@@ -281,13 +338,13 @@ const store = {
             return newTask.id;
         }
         try {
-            const ref = await db.collection("tasks").add(taskData);
+            const ref = await db.collection("tasks").add(dataWithOwner);
             return ref.id;
         } catch (err) {
             console.warn("Fallo escribiendo tarea en Firestore (guardando local):", err);
             const newTask = {
                 id: 'task_' + Date.now() + Math.random().toString(36).substr(2, 4),
-                ...taskData
+                ...dataWithOwner
             };
             this.state.tasks.push(newTask);
             this._saveLocalTasks();
@@ -391,7 +448,137 @@ const store = {
         }
     },
 
+    // --- Métodos de Compartir Calendario ---
+    getMyShares() {
+        const currentUser = this.getCurrentUser();
+        const email = currentUser.email.toLowerCase();
+        return (this.state.shares || []).filter(s => (s.ownerEmail || '').toLowerCase() === email);
+    },
+
+    getSharedWithMe() {
+        const currentUser = this.getCurrentUser();
+        const email = currentUser.email.toLowerCase();
+        return (this.state.shares || []).filter(s => (s.sharedWithEmail || '').toLowerCase() === email);
+    },
+
+    async shareCalendarWith(targetEmail) {
+        if (!targetEmail) throw new Error("Debes indicar un correo electrónico.");
+        targetEmail = targetEmail.trim().toLowerCase();
+        const currentUser = this.getCurrentUser();
+        
+        if (targetEmail === currentUser.email.toLowerCase()) {
+            throw new Error("No puedes compartir el calendario con tu propio correo.");
+        }
+
+        const existing = this.getMyShares().find(s => (s.sharedWithEmail || '').toLowerCase() === targetEmail);
+        if (existing) {
+            throw new Error(`Ya estás compartiendo tu calendario con "${targetEmail}".`);
+        }
+
+        // Obtener el nombre del usuario si está registrado
+        let targetName = targetEmail.split('@')[0];
+        if (db) {
+            try {
+                const uSnap = await db.collection("users").where("email", "==", targetEmail).limit(1).get();
+                if (!uSnap.empty) {
+                    const uData = uSnap.docs[0].data();
+                    if (uData.name) targetName = uData.name;
+                }
+            } catch (e) {
+                console.log("No se pudo consultar el nombre del usuario:", e);
+            }
+        }
+
+        const shareData = {
+            ownerEmail: currentUser.email.toLowerCase(),
+            ownerName: currentUser.name,
+            ownerUid: currentUser.uid,
+            sharedWithEmail: targetEmail,
+            sharedWithName: targetName,
+            createdAt: new Date().toISOString()
+        };
+
+        if (this.isLocal || !db) {
+            const newShare = { id: 'share_' + Date.now(), ...shareData };
+            this.state.shares.push(newShare);
+            this._saveLocalShares();
+            this._notify();
+            return newShare;
+        }
+
+        try {
+            const docId = `${encodeURIComponent(currentUser.email)}_TO_${encodeURIComponent(targetEmail)}`;
+            await db.collection("calendar_shares").doc(docId).set(shareData);
+            return { id: docId, ...shareData };
+        } catch (err) {
+            console.warn("Fallo guardando en Firestore calendar_shares (guardando local):", err);
+            const newShare = { id: 'share_' + Date.now(), ...shareData };
+            this.state.shares.push(newShare);
+            this._saveLocalShares();
+            this._notify();
+            return newShare;
+        }
+    },
+
+    async revokeCalendarShare(shareId) {
+        if (this.isLocal || !db) {
+            this.state.shares = this.state.shares.filter(s => s.id !== shareId);
+            this._saveLocalShares();
+            this._notify();
+            return;
+        }
+        try {
+            await db.collection("calendar_shares").doc(shareId).delete();
+        } catch (err) {
+            console.warn("Error revocando share en Firestore (eliminando local):", err);
+            this.state.shares = this.state.shares.filter(s => s.id !== shareId);
+            this._saveLocalShares();
+            this._notify();
+        }
+    },
+
+    setActiveCalendarFilter(filter) {
+        this.activeCalendarFilter = filter || 'mine';
+        this._notify();
+    },
+
+    getActiveCalendarFilter() {
+        return this.activeCalendarFilter || 'mine';
+    },
+
+    isSharedTask(task) {
+        if (!task) return false;
+        const currentUser = this.getCurrentUser();
+        const userEmail = currentUser.email.toLowerCase();
+        const taskOwner = (task.ownerEmail || userEmail).toLowerCase();
+        return taskOwner !== userEmail;
+    },
+
     // --- Métodos de Acceso ---
-    getTasks() { return this.state.tasks; },
+    getTasks() {
+        const currentUser = this.getCurrentUser();
+        const userEmail = currentUser.email.toLowerCase();
+        const sharedWithMe = this.getSharedWithMe();
+        const sharedEmails = sharedWithMe.map(s => (s.ownerEmail || '').toLowerCase());
+        const filter = (this.activeCalendarFilter || 'mine').toLowerCase();
+
+        return this.state.tasks.filter(task => {
+            // Si la tarea es antigua sin ownerEmail, la consideramos de este usuario para no perderla
+            const taskOwner = (task.ownerEmail || userEmail).toLowerCase();
+
+            if (filter === 'mine') {
+                return taskOwner === userEmail;
+            } else if (filter === 'all') {
+                return taskOwner === userEmail || sharedEmails.includes(taskOwner);
+            } else {
+                return taskOwner === filter;
+            }
+        });
+    },
+
+    getAllTasksRaw() {
+        return this.state.tasks;
+    },
+
     getCategories() { return this.state.categories; }
 };

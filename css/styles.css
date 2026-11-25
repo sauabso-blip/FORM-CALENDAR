@@ -1603,3 +1603,129 @@ select {
         max-width: 92%;
     }
 }
+
+/* --- Super User Form Styles --- */
+.su-create-card {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 0.65rem;
+    padding: 1.15rem;
+    margin-bottom: 1.25rem;
+}
+
+.su-create-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 0.85rem;
+    align-items: end;
+}
+
+@media (max-width: 768px) {
+    .su-create-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* --- Calendar Filter Selector & Sharing Styles --- */
+.calendar-select-group {
+    display: inline-flex;
+    align-items: center;
+}
+
+.select-calendar {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-main);
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.select-calendar:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.share-box-section {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+}
+
+.share-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.share-item-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    padding: 0.6rem 0.85rem;
+    font-size: 0.875rem;
+}
+
+.share-item-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.share-user-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #e0e7ff;
+    color: #4338ca;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.btn-revoke-share {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-revoke-share:hover {
+    background: #fca5a5;
+    color: #991b1b;
+}
+
+.btn-view-shared-cal {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-view-shared-cal:hover {
+    background: #dbeafe;
+    color: #1d4ed8;
+}

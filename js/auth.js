@@ -72,6 +72,11 @@ class AuthManager {
             this.userNameSpan.textContent = 'Modo Local (Offline)';
         }
 
+        const btnSu = document.getElementById('btn-su');
+        if (btnSu) {
+            btnSu.style.display = 'inline-block';
+        }
+
         if (window._appInstance) {
             window._appInstance.initAfterAuth(true);
         } else {

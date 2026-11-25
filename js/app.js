@@ -28,6 +28,7 @@ class App {
 
         this._bindUIEvents();
         this._bindDataEvents();
+        this._bindShareCalendarEvents();
         this._initConfigModal();
 
         this.initialized = false;
@@ -280,6 +281,197 @@ class App {
         this._setupFilter('category');
     }
 
+    _bindShareCalendarEvents() {
+        const btnOpen = document.getElementById('btn-open-share-modal');
+        const modal = document.getElementById('modal-share-calendar');
+        const btnClose = document.getElementById('btn-close-share-modal');
+        const btnDone = document.getElementById('btn-done-share-modal');
+        const formShare = document.getElementById('form-share-calendar');
+        const selectCal = document.getElementById('select-calendar-filter');
+
+        const openModal = () => {
+            if (modal) {
+                modal.style.display = 'flex';
+                this._renderShareLists();
+            }
+        };
+
+        const closeModal = () => {
+            if (modal) modal.style.display = 'none';
+        };
+
+        if (btnOpen) btnOpen.addEventListener('click', openModal);
+        if (btnClose) btnClose.addEventListener('click', closeModal);
+        if (btnDone) btnDone.addEventListener('click', closeModal);
+
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeModal();
+            });
+        }
+
+        if (selectCal) {
+            selectCal.addEventListener('change', (e) => {
+                const val = e.target.value;
+                this.store.setActiveCalendarFilter(val);
+                this.render();
+            });
+        }
+
+        if (formShare) {
+            formShare.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const emailInput = document.getElementById('share-target-email');
+                const feedback = document.getElementById('share-feedback-msg');
+                const btnSubmit = document.getElementById('btn-submit-share');
+                const email = (emailInput?.value || '').trim().toLowerCase();
+
+                if (!email) return;
+
+                if (feedback) {
+                    feedback.textContent = '';
+                    feedback.style.display = 'none';
+                }
+
+                if (btnSubmit) {
+                    btnSubmit.disabled = true;
+                    btnSubmit.textContent = 'Compartiendo...';
+                }
+
+                try {
+                    await this.store.shareCalendarWith(email);
+                    if (feedback) {
+                        feedback.textContent = `✅ Tu agenda ha sido compartida con "${email}".`;
+                        feedback.style.color = '#16a34a';
+                        feedback.style.display = 'block';
+                    }
+                    if (emailInput) emailInput.value = '';
+                    this._renderShareLists();
+                    this._updateCalendarSelector();
+                } catch (err) {
+                    console.error("Error al compartir calendario:", err);
+                    if (feedback) {
+                        feedback.textContent = `⚠️ ${err.message || err}`;
+                        feedback.style.color = '#dc2626';
+                        feedback.style.display = 'block';
+                    }
+                } finally {
+                    if (btnSubmit) {
+                        btnSubmit.disabled = false;
+                        btnSubmit.textContent = 'Compartir';
+                    }
+                }
+            });
+        }
+    }
+
+    _renderShareLists() {
+        const mySharesContainer = document.getElementById('my-shares-list');
+        const sharedWithMeContainer = document.getElementById('shared-with-me-list');
+
+        // 1. Con quién comparto mi agenda
+        if (mySharesContainer) {
+            const myShares = this.store.getMyShares();
+            mySharesContainer.innerHTML = '';
+
+            if (myShares.length === 0) {
+                mySharesContainer.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">No estás compartiendo tu agenda con nadie actualmente.</p>';
+            } else {
+                myShares.forEach(s => {
+                    const card = document.createElement('div');
+                    card.className = 'share-item-card';
+                    const initial = (s.sharedWithName || s.sharedWithEmail || '?')[0].toUpperCase();
+
+                    card.innerHTML = `
+                        <div class="share-item-info">
+                            <span class="share-user-badge">${initial}</span>
+                            <div>
+                                <strong>${s.sharedWithName || s.sharedWithEmail.split('@')[0]}</strong>
+                                <div style="font-size: 0.78rem; color: var(--text-muted);">${s.sharedWithEmail}</div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-revoke-share" data-id="${s.id}">Revocar acceso</button>
+                    `;
+
+                    const btnRevoke = card.querySelector('.btn-revoke-share');
+                    if (btnRevoke) {
+                        btnRevoke.addEventListener('click', async () => {
+                            if (confirm(`¿Dejar de compartir tu agenda con ${s.sharedWithEmail}? Ya no podrá ver tus entradas.`)) {
+                                await this.store.revokeCalendarShare(s.id);
+                                this._renderShareLists();
+                                this._updateCalendarSelector();
+                            }
+                        });
+                    }
+
+                    mySharesContainer.appendChild(card);
+                });
+            }
+        }
+
+        // 2. Agendas compartidas conmigo
+        if (sharedWithMeContainer) {
+            const sharedWithMe = this.store.getSharedWithMe();
+            sharedWithMeContainer.innerHTML = '';
+
+            if (sharedWithMe.length === 0) {
+                sharedWithMeContainer.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">Nadie ha compartido su agenda contigo aún.</p>';
+            } else {
+                sharedWithMe.forEach(s => {
+                    const card = document.createElement('div');
+                    card.className = 'share-item-card';
+                    const initial = (s.ownerName || s.ownerEmail || '?')[0].toUpperCase();
+
+                    card.innerHTML = `
+                        <div class="share-item-info">
+                            <span class="share-user-badge" style="background: #dcfce7; color: #15803d;">${initial}</span>
+                            <div>
+                                <strong>${s.ownerName || s.ownerEmail.split('@')[0]}</strong>
+                                <div style="font-size: 0.78rem; color: var(--text-muted);">${s.ownerEmail}</div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-view-shared-cal" data-email="${s.ownerEmail}">👁️ Ver Calendario</button>
+                    `;
+
+                    const btnView = card.querySelector('.btn-view-shared-cal');
+                    if (btnView) {
+                        btnView.addEventListener('click', () => {
+                            this.store.setActiveCalendarFilter(s.ownerEmail);
+                            const modal = document.getElementById('modal-share-calendar');
+                            if (modal) modal.style.display = 'none';
+                            this._updateCalendarSelector();
+                            this.render();
+                        });
+                    }
+
+                    sharedWithMeContainer.appendChild(card);
+                });
+            }
+        }
+    }
+
+    _updateCalendarSelector() {
+        const selectCal = document.getElementById('select-calendar-filter');
+        if (!selectCal) return;
+
+        const currentVal = this.store.getActiveCalendarFilter();
+        const sharedWithMe = this.store.getSharedWithMe();
+
+        let html = `<option value="mine" ${currentVal === 'mine' ? 'selected' : ''}>👤 Mi Agenda</option>`;
+
+        sharedWithMe.forEach(s => {
+            const ownerEmail = (s.ownerEmail || '').toLowerCase();
+            const label = s.ownerName || ownerEmail.split('@')[0];
+            const isSelected = currentVal.toLowerCase() === ownerEmail ? 'selected' : '';
+            html += `<option value="${ownerEmail}" ${isSelected}>👥 Agenda de: ${label} (${ownerEmail})</option>`;
+        });
+
+        html += `<option value="all" ${currentVal === 'all' ? 'selected' : ''}>🌐 Ver Todos (Combinado)</option>`;
+
+        selectCal.innerHTML = html;
+        selectCal.value = currentVal;
+    }
+
     switchView(view) {
         if (view === 'year' || view === 'rolling') {
             this.state.currentDate = new Date();
@@ -308,6 +500,7 @@ class App {
 
         this.updateFilterDropdowns();
         this._updateExpenseSummary();
+        this._updateCalendarSelector();
     }
 
     _updateExpenseSummary() {
