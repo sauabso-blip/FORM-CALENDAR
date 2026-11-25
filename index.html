@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calendario de Proyectos</title>
-    <link rel="stylesheet" href="./css/styles.css?v=3">
+    <title>Agenda Personal</title>
+    <link rel="stylesheet" href="./css/styles.css?v=4">
 </head>
 
 <body>
@@ -25,29 +25,35 @@
                     </div>
                     <div class="modal-actions" style="flex-direction: column; gap: 10px;">
                         <button type="submit" class="btn btn-primary" style="width: 100%;">Entrar</button>
+                        <button type="button" class="btn btn-secondary" id="btn-enter-local" style="width: 100%; border: 1px solid var(--primary); color: var(--primary); background: #eff6ff; font-weight: 600;">🚀 Probar en Modo Local (Sin cuenta)</button>
                         <button type="button" class="btn btn-text" id="btn-show-register" style="width: 100%;">¿No tienes cuenta? Solicitar Acceso</button>
                     </div>
                 </form>
             </div>
 
             <div id="auth-register-view" style="display: none;">
-                <h2>Solicitar Acceso</h2>
-                <p style="font-size: 0.9em; margin-bottom: 15px; color: var(--text-secondary);">Se vinculará este dispositivo a tu cuenta.</p>
+                <h2>Crear Cuenta</h2>
+                <p style="font-size: 0.9em; margin-bottom: 15px; color: var(--text-secondary);">Crea tu cuenta personal para acceder a tu agenda.</p>
                 <form id="form-register">
                     <div class="form-group">
                         <label for="register-name">Nombre Completo</label>
-                        <input type="text" id="register-name" required placeholder="Ej: Juan Pérez">
+                        <input type="text" id="register-name" required placeholder="Ej: Saúl">
                     </div>
                     <div class="form-group">
                         <label for="register-email">Correo Electrónico</label>
                         <input type="email" id="register-email" required placeholder="tu@email.com">
                     </div>
+                    <div class="form-group">
+                        <label for="register-password">Contraseña (mín. 6 caracteres)</label>
+                        <input type="password" id="register-password" required minlength="6" placeholder="********">
+                    </div>
                     <div class="modal-actions" style="flex-direction: column; gap: 10px;">
-                        <button type="submit" class="btn btn-primary" style="width: 100%;">Solicitar</button>
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">Crear Cuenta y Entrar</button>
                         <button type="button" class="btn btn-text" id="btn-show-login" style="width: 100%;">Volver a Iniciar Sesión</button>
                     </div>
                 </form>
             </div>
+
             <div id="auth-loading" style="display: none; text-align: center; padding: 20px;">
                 <p>Procesando...</p>
             </div>
@@ -58,7 +64,7 @@
     <div class="app-container" id="main-app" style="display: none;">
         <header class="app-header">
             <div class="header-left">
-                <h1>Calendario de Proyectos</h1>
+                <h1>Agenda Personal</h1>
                 <div class="view-switcher">
                     <button id="btn-view-year" class="btn active" data-view="year">Año natural</button>
                     <button id="btn-view-rolling" class="btn" data-view="rolling">Año vista</button>
@@ -68,19 +74,14 @@
                 <div class="header-controls">
                     <button id="btn-config" class="btn btn-secondary">⚙ Configurar</button>
                     <div class="filter-group">
-                        <div class="multi-select" id="ms-project">
-                            <button class="ms-btn" type="button">Filtrar Proyectos ▾</button>
-                            <div class="ms-dropdown" id="ms-list-project"></div>
-                        </div>
-                        <div class="multi-select" id="ms-person">
-                            <button class="ms-btn" type="button">Filtrar Responsables ▾</button>
-                            <div class="ms-dropdown" id="ms-list-person"></div>
-                        </div>
-                        <div class="multi-select" id="ms-executor">
-                            <button class="ms-btn" type="button">Filtrar Ejecutores ▾</button>
-                            <div class="ms-dropdown" id="ms-list-executor"></div>
+                        <div class="multi-select" id="ms-category">
+                            <button class="ms-btn" type="button">Filtrar Categorías ▾</button>
+                            <div class="ms-dropdown" id="ms-list-category"></div>
                         </div>
                     </div>
+                    <button id="btn-toggle-ai" class="btn btn-ai" title="Abrir Asistente IA">
+                        <span class="ai-sparkle">✨</span> 🤖 Asistente IA
+                    </button>
                 </div>
             </div>
             <div class="header-right">
@@ -89,14 +90,71 @@
                     <button id="btn-su" class="btn btn-sm" style="display: none; background: #dc2626; color: white; margin-right: 10px; font-weight: bold;">SU</button>
                     <button id="btn-logout" class="btn btn-secondary btn-sm" style="margin-right: 15px;">Salir</button>
                 </div>
-                <button id="btn-add-project" class="btn btn-primary">Añadir Proyecto</button>
-                <button id="btn-add-task" class="btn btn-primary">Añadir Tarea</button>
+                <button id="btn-add-category" class="btn btn-secondary">+ Categoría</button>
+                <button id="btn-add-task" class="btn btn-primary">+ Nueva Entrada</button>
             </div>
         </header>
+
+        <!-- Expense Summary Bar -->
+        <div id="expense-summary-bar" class="expense-summary-bar">
+            <!-- Dynamically populated -->
+        </div>
 
         <main id="app-main">
             <!-- El calendario se renderizará aquí -->
         </main>
+
+        <!-- AI Assistant Modal Overlay (Central en Pantalla) -->
+        <div id="ai-chat-modal" class="modal-overlay ai-modal-overlay" style="display: none;">
+            <div class="ai-modal-content" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
+                <div class="ai-modal-header">
+                    <div class="ai-header-info">
+                        <span class="ai-avatar-badge">🤖</span>
+                        <div>
+                            <div class="ai-header-title-row">
+                                <h3 id="ai-modal-title">Asistente IA</h3>
+                                <span class="ai-status-tag" id="ai-status-label" title="Proveedor y modelo activo">Ollama / Cloud</span>
+                            </div>
+                            <span class="ai-header-subtitle">Consulta tu agenda, analiza gastos o crea eventos y tareas en lenguaje natural</span>
+                        </div>
+                    </div>
+                    <div class="ai-header-actions">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-clear-ai-chat" title="Limpiar conversación">🗑️ Limpiar chat</button>
+                        <button type="button" class="btn-icon ai-close-btn" id="btn-close-ai" title="Cerrar modal (Esc)">&times;</button>
+                    </div>
+                </div>
+
+                <!-- Quick Action Chips -->
+                <div class="ai-chips-bar">
+                    <span class="ai-chips-label">Sugerencias rápidas:</span>
+                    <button type="button" class="ai-chip" data-prompt="¿Qué tareas y eventos tengo esta semana?">📅 Esta semana</button>
+                    <button type="button" class="ai-chip" data-prompt="¿Cuánto he gastado este mes y en qué?">💶 Gastos del mes</button>
+                    <button type="button" class="ai-chip" data-prompt="¿Tengo algún aviso o recordatorio pendiente?">🔔 Avisos</button>
+                    <button type="button" class="ai-chip" data-prompt="Añade cena mañana a las 21:30 por 35€ en categoría Gastos">➕ Añadir gasto cena</button>
+                </div>
+
+                <!-- Messages Conversation Area -->
+                <div class="ai-messages-list" id="ai-messages-list">
+                    <!-- Messages injected dynamically -->
+                </div>
+
+                <div class="ai-status-indicator" id="ai-status-indicator" style="display: none;">
+                    <span class="ai-spinner"></span>
+                    <span>El Asistente está analizando y consultando tu agenda...</span>
+                </div>
+
+                <!-- Central Prompt Input Section -->
+                <div class="ai-input-area">
+                    <textarea id="ai-input-prompt" placeholder="Escribe aquí lo que necesitas... (ej: '¿Qué tengo para este fin de semana?' o 'Añade una cita médica el jueves a las 11:00')..." rows="3"></textarea>
+                    <div class="ai-input-bottom-bar">
+                        <span class="ai-input-hint">💡 Pulsa <kbd>Enter</kbd> para enviar · <kbd>Shift + Enter</kbd> para nueva línea</span>
+                        <button type="button" id="btn-ai-send" class="btn btn-primary btn-ai-send" title="Enviar prompt">
+                            <span>Enviar prompt</span> <span style="font-size: 1.1rem; margin-left: 4px;">➤</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div id="tooltip" class="tooltip"></div>
         <div id="context-menu" class="context-menu"></div>
@@ -110,27 +168,67 @@
                 <button id="config-modal-close" class="btn-icon">&times;</button>
             </div>
             <div class="config-tabs-nav">
-                <button class="config-tab-btn active" data-tab="projects">Proyectos</button>
-                <button class="config-tab-btn" data-tab="people">Personas</button>
-                <button class="config-tab-btn" data-tab="executors">Ejecutores</button>
+                <button class="config-tab-btn active" data-tab="categories">Categorías</button>
+                <button class="config-tab-btn" data-tab="ai">🤖 IA / Ollama</button>
                 <button class="config-tab-btn" data-tab="backup">Backups</button>
             </div>
             <div class="config-container">
                 <div class="config-main">
-                    <!-- Projects Tab -->
-                    <div id="config-tab-projects" class="config-tab-content active">
-                        <h3>Gestionar Proyectos</h3>
-                        <div id="config-list-projects" class="config-list"></div>
+                    <!-- Categories Tab -->
+                    <div id="config-tab-categories" class="config-tab-content active">
+                        <h3>Gestionar Categorías</h3>
+                        <div id="config-list-categories" class="config-list"></div>
                     </div>
-                    <!-- People Tab -->
-                    <div id="config-tab-people" class="config-tab-content">
-                        <h3>Gestionar Personas</h3>
-                        <div id="config-list-people" class="config-list"></div>
-                    </div>
-                    <!-- Executors Tab -->
-                    <div id="config-tab-executors" class="config-tab-content">
-                        <h3>Gestionar Ejecutores</h3>
-                        <div id="config-list-executors" class="config-list"></div>
+                    <!-- AI / Ollama Tab -->
+                    <div id="config-tab-ai" class="config-tab-content">
+                        <h3>Configuración de Inteligencia Artificial (Groq Cloud / Ollama)</h3>
+                        <p class="text-sm text-muted" style="margin-bottom: 1rem;">
+                            Conecta tu proveedor de IA para interactuar con tu calendario, consultar eventos/gastos y añadir tareas automáticamente con lenguaje natural.
+                        </p>
+
+                        <!-- Provider One-Click Presets -->
+                        <div style="background: var(--bg-hover, #f1f5f9); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; margin-bottom: 1.25rem;">
+                            <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 0.5rem;">⚡ Selección Rápida de Proveedor (1 Clic):</label>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button type="button" id="btn-preset-groq" class="btn btn-secondary btn-sm" style="background: #e0f2fe; border-color: #7dd3fc; color: #0369a1; font-weight: 600;">
+                                    🚀 Usar Groq Cloud (Gratuito, rápido y móvil)
+                                </button>
+                                <button type="button" id="btn-preset-ollama" class="btn btn-secondary btn-sm" style="background: #f3f4f6; border-color: #d1d5db; color: #374151;">
+                                    💻 Usar Ollama Local (en tu PC)
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label for="ai-config-endpoint">URL del Servidor / Endpoint</label>
+                            <input type="url" id="ai-config-endpoint" placeholder="https://api.groq.com/openai/v1 o http://localhost:11434" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 0.375rem;">
+                            <small class="text-muted" style="display: block; margin-top: 0.25rem;">Groq Cloud: <code>https://api.groq.com/openai/v1</code> | Ollama Local: <code>http://localhost:11434</code></small>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label for="ai-config-key">Clave API (API Key)</label>
+                            <input type="password" id="ai-config-key" placeholder="Pega tu clave de Groq (gsk_...) o de tu servidor" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 0.375rem;">
+                            <small class="text-muted" style="display: block; margin-top: 0.25rem;">🔒 Se almacena únicamente en tu navegador. Si usas Ollama local en tu PC, no requiere clave.</small>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 1.25rem;">
+                            <label for="ai-config-model">Nombre del Modelo</label>
+                            <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+                                <select id="ai-config-model-select" style="flex: 1; padding: 0.5rem; border: 1px solid var(--border); border-radius: 0.375rem;">
+                                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Rápido y ligero)</option>
+                                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Alta inteligencia)</option>
+                                    <option value="llama3-8b-8192">llama3-8b-8192</option>
+                                    <option value="gemma2-9b-it">gemma2-9b-it</option>
+                                    <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                                    <option value="custom">-- Escribir manualmente abajo --</option>
+                                </select>
+                                <button type="button" id="btn-detect-ai-models" class="btn btn-secondary btn-sm" title="Consultar modelos disponibles en tu cuenta">🔄 Detectar Modelos</button>
+                            </div>
+                            <input type="text" id="ai-config-model" placeholder="llama-3.1-8b-instant" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 0.375rem;">
+                            <small class="text-muted" style="display: block; margin-top: 0.25rem;">Si no estás seguro de qué modelo está activo en tu cuenta, pulsa <strong>🔄 Detectar Modelos</strong> con tu clave puesta.</small>
+                        </div>
+                        <div style="display:flex; align-items:center; gap: 1rem;">
+                            <button id="btn-save-ai-config" class="btn btn-primary" type="button">Guardar Configuración IA</button>
+                            <span id="ai-config-status" style="color: #059669; font-weight: 500; display: none;"></span>
+                        </div>
                     </div>
                     <!-- Backup Tab -->
                     <div id="config-tab-backup" class="config-tab-content">
@@ -143,25 +241,100 @@
         </div>
     </div>
 
-    <!-- Modal: New Task -->
+    <!-- Modal: View Task Card (Read-Only) -->
+    <dialog id="modal-task-card" class="modal modal-card">
+        <div class="task-card-content">
+            <div class="task-card-header">
+                <span id="card-task-category" class="card-category-badge"></span>
+                <button type="button" class="btn-icon" id="btn-close-task-card" title="Cerrar">&times;</button>
+            </div>
+            <h2 id="card-task-title" class="task-card-title"></h2>
+            
+            <div class="task-card-body">
+                <div class="task-card-row">
+                    <span class="card-icon">📅</span>
+                    <div class="card-field-group">
+                        <span class="card-field-label">Periodo:</span>
+                        <span id="card-task-dates" class="card-field-value"></span>
+                    </div>
+                </div>
+
+                <div id="card-task-time-row" class="task-card-row" style="display: none;">
+                    <span class="card-icon">⏰</span>
+                    <div class="card-field-group">
+                        <span class="card-field-label">Hora:</span>
+                        <span id="card-task-time" class="card-field-value"></span>
+                    </div>
+                </div>
+
+                <div id="card-task-reminder-row" class="task-card-row" style="display: none;">
+                    <span class="card-icon">🔔</span>
+                    <div class="card-field-group">
+                        <span class="card-field-label">Aviso:</span>
+                        <span id="card-task-reminder" class="card-field-value"></span>
+                    </div>
+                </div>
+
+                <div id="card-task-amount-row" class="task-card-row" style="display: none;">
+                    <span class="card-icon">💶</span>
+                    <div class="card-field-group">
+                        <span class="card-field-label">Importe / Gasto:</span>
+                        <span id="card-task-amount" class="card-field-value card-amount-badge"></span>
+                    </div>
+                </div>
+
+                <div id="card-task-location-row" class="task-card-row" style="display: none;">
+                    <span class="card-icon">📍</span>
+                    <div class="card-field-group">
+                        <span class="card-field-label">Lugar:</span>
+                        <span id="card-task-location" class="card-field-value"></span>
+                    </div>
+                </div>
+
+                <div id="card-task-comments-row" class="task-card-row" style="display: none;">
+                    <span class="card-icon">📝</span>
+                    <div class="card-field-group" style="width: 100%;">
+                        <span class="card-field-label">Notas y detalles:</span>
+                        <div id="card-task-comments" class="card-comments-box"></div>
+                    </div>
+                </div>
+
+                <div id="card-task-attachments-row" class="task-card-row" style="display: none;">
+                    <span class="card-icon">📎</span>
+                    <div class="card-field-group" style="width: 100%;">
+                        <span class="card-field-label">Archivos adjuntos:</span>
+                        <div id="card-task-attachments" class="attachments-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="task-card-footer">
+                <span class="text-muted" style="font-size: 0.8rem;">💡 Clic derecho (o mantener pulsado) para editar o mover</span>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-secondary" id="btn-card-close">Cerrar</button>
+                    <button type="button" class="btn btn-primary" id="btn-card-edit">✏️ Editar</button>
+                </div>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Modal: New/Edit Task -->
     <dialog id="modal-task" class="modal">
         <form id="form-task">
-            <h2>Gestión de Tarea</h2>
+            <h2>Gestión de Entrada</h2>
             <input type="hidden" id="task-id">
 
-            <div class="form-group">
-                <label for="task-desc">Descripción</label>
-                <input type="text" id="task-desc" required placeholder="Descripción de la tarea">
-            </div>
-
-            <div class="form-group">
-                <label for="task-comments">Comentarios</label>
-                <textarea id="task-comments" rows="3" placeholder="Detalles adicionales..."></textarea>
-            </div>
-
-            <div class="form-group">
-                <label for="task-location">Localización</label>
-                <input type="text" id="task-location" placeholder="Ej: Sala de Reuniones / Oficina Central">
+            <div class="form-row">
+                <div class="form-group" style="flex: 2;">
+                    <label for="task-desc">Título / Descripción</label>
+                    <input type="text" id="task-desc" required placeholder="Ej: Cena con amigos, Compra supermercado...">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label for="task-category">Categoría</label>
+                    <select id="task-category" required>
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
             </div>
 
             <div class="form-row">
@@ -177,53 +350,68 @@
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="task-project">Proyecto</label>
-                    <select id="task-project" required>
-                        <!-- Populated dynamically -->
+                    <label for="task-time">Hora (Opcional)</label>
+                    <input type="time" id="task-time">
+                </div>
+                <div class="form-group">
+                    <label for="task-reminder">Aviso / Recordatorio</label>
+                    <select id="task-reminder">
+                        <option value="none">Sin aviso</option>
+                        <option value="on_time">A la hora del evento</option>
+                        <option value="15m">15 minutos antes</option>
+                        <option value="1h">1 hora antes</option>
+                        <option value="1d">1 día antes</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="task-assignee">Responsable</label>
-                    <select id="task-assignee" required>
-                        <!-- Populated dynamically from People -->
-                    </select>
+                    <label for="task-amount">Importe (€) <span style="font-weight:normal; color:var(--text-muted);">(Opcional)</span></label>
+                    <input type="number" id="task-amount" step="0.01" min="0" placeholder="0.00">
                 </div>
             </div>
 
             <div class="form-group">
-                <label for="task-executor">Asignado a (Ejecutor)</label>
-                <select id="task-executor">
-                    <option value="">-- Seleccionar --</option>
-                    <!-- Populated dynamically from Executors -->
-                </select>
+                <label for="task-location">Localización / Lugar (Opcional)</label>
+                <input type="text" id="task-location" placeholder="Ej: Casa, Supermercado, Restaurante...">
+            </div>
+
+            <div class="form-group">
+                <label for="task-comments">Notas / Comentarios</label>
+                <textarea id="task-comments" rows="3" placeholder="Detalles adicionales..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="task-files">Adjuntar Archivos (Texto, Word/Office, Imágenes, Audio, PDF...)</label>
+                <input type="file" id="task-files" multiple accept=".txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,image/*,audio/*,*/*">
+                <div id="task-upload-status" class="upload-status" style="display: none;"></div>
+                <div id="task-attachments-list" class="attachments-list"></div>
             </div>
 
             <div class="modal-actions">
                 <button type="button" class="btn btn-text" id="btn-cancel-task">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Guardar Tarea</button>
+                <button type="submit" class="btn btn-primary" id="btn-submit-task">Guardar</button>
             </div>
         </form>
     </dialog>
 
-    <!-- Modal: New Project -->
-    <dialog id="modal-project" class="modal">
-        <form id="form-project">
-            <h2>Nuevo Proyecto</h2>
+    <!-- Modal: New/Edit Category -->
+    <dialog id="modal-category" class="modal">
+        <form id="form-category">
+            <h2>Nueva Categoría</h2>
 
             <div class="form-group">
-                <input type="hidden" id="project-id">
-                <label for="project-name">Nombre del Proyecto</label>
-                <input type="text" id="project-name" required placeholder="Ej: Migración ERP">
+                <input type="hidden" id="category-id">
+                <label for="category-name">Nombre de la Categoría</label>
+                <input type="text" id="category-name" required placeholder="Ej: Tareas, Eventos sociales, Gastos...">
             </div>
 
             <div class="form-group">
-                <label for="project-color">Color</label>
-                <input type="color" id="project-color" value="#3b82f6" required>
+                <label for="category-color">Color</label>
+                <input type="color" id="category-color" value="#3b82f6" required>
             </div>
 
             <div class="modal-actions">
-                <button type="button" class="btn btn-text" id="btn-cancel-project">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Crear Proyecto</button>
+                <button type="button" class="btn btn-text" id="btn-cancel-category">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar Categoría</button>
             </div>
         </form>
     </dialog>
@@ -231,8 +419,8 @@
     <!-- Modal: Move Task -->
     <dialog id="modal-move-task" class="modal">
         <form id="form-move-task">
-            <h2>Mover Tarea</h2>
-            <p>Selecciona la nueva fecha de inicio para la tarea. La duración se mantendrá.</p>
+            <h2>Mover Entrada</h2>
+            <p>Selecciona la nueva fecha de inicio. La duración se mantendrá.</p>
 
             <div class="form-group">
                 <label for="move-task-date">Nueva Fecha de Inicio</label>
@@ -241,11 +429,10 @@
 
             <div class="modal-actions">
                 <button type="button" class="btn btn-text" id="btn-cancel-move">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Mover Tarea</button>
+                <button type="submit" class="btn btn-primary">Mover</button>
             </div>
         </form>
     </dialog>
-
 
     <!-- Admin SU Modal -->
     <div id="modal-su-admin" class="modal-overlay" style="display: none; z-index: 2000;">
@@ -277,19 +464,20 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js"></script>
 
     <!-- Manual Configuration -->
     <script src="./js/firebaseConfig.js"></script>
 
     <!-- App Scripts -->
-    <script src="./js/utils.js?v=3"></script>
-    <script src="./js/auth.js?v=3"></script>
-    <script src="./js/admin.js?v=3"></script>
-    <script src="./js/store.js?v=3"></script>
-    <script src="./js/viewYear.js?v=3"></script>
-    <script src="./js/viewMonth.js?v=3"></script>
-    <script src="./js/app.js?v=3"></script>
-
+    <script src="./js/utils.js?v=13"></script>
+    <script src="./js/auth.js?v=13"></script>
+    <script src="./js/admin.js?v=13"></script>
+    <script src="./js/store.js?v=13"></script>
+    <script src="./js/aiAssistant.js?v=13"></script>
+    <script src="./js/viewYear.js?v=13"></script>
+    <script src="./js/viewMonth.js?v=13"></script>
+    <script src="./js/app.js?v=13"></script>
 </body>
 
 </html>
