@@ -18,6 +18,14 @@ class App {
             this._showTaskCardModal.bind(this),
             this._updateExpenseSummary.bind(this)
         );
+        this.weekView = (typeof WeekView === 'function') ? new WeekView(
+            this.store,
+            this.state,
+            this.handleTaskUpdate.bind(this),
+            this._handleContextMenu.bind(this),
+            this._showTaskCardModal.bind(this),
+            this._updateExpenseSummary.bind(this)
+        ) : null;
         this.yearView = new YearView(
             this.store,
             this.state,
@@ -98,10 +106,11 @@ class App {
     }
 
     _bindDataEvents() {
-        document.getElementById('btn-view-year').addEventListener('click', () => this.switchView('year'));
-        document.getElementById('btn-view-rolling').addEventListener('click', () => this.switchView('rolling'));
-        document.getElementById('btn-view-month').addEventListener('click', () => this.switchView('month'));
-        document.getElementById('btn-add-task').addEventListener('click', () => this._showTaskModal());
+        document.getElementById('btn-view-year')?.addEventListener('click', () => this.switchView('year'));
+        document.getElementById('btn-view-rolling')?.addEventListener('click', () => this.switchView('rolling'));
+        document.getElementById('btn-view-month')?.addEventListener('click', () => this.switchView('month'));
+        document.getElementById('btn-view-week')?.addEventListener('click', () => this.switchView('week'));
+        document.getElementById('btn-add-task')?.addEventListener('click', () => this._showTaskModal());
         document.getElementById('btn-add-category').addEventListener('click', () => this._openCategoryModal());
 
         const modalTask = document.getElementById('modal-task');
@@ -494,6 +503,9 @@ class App {
         mainContainer.innerHTML = '';
 
         switch (this.state.currentView) {
+            case 'week':
+                if (this.weekView) mainContainer.appendChild(this.weekView.render());
+                break;
             case 'month':
                 mainContainer.appendChild(this.monthView.render());
                 break;
@@ -528,7 +540,28 @@ class App {
 
         const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-        if (this.state.currentView === 'month') {
+        if (this.state.currentView === 'week') {
+            const weekDays = (window.AppUtils && window.AppUtils.getWeekDays)
+                ? window.AppUtils.getWeekDays(this.state.currentDate)
+                : [this.state.currentDate];
+            const monday = weekDays[0];
+            const sunday = weekDays[6] || monday;
+            const startStr = (window.AppUtils && window.AppUtils.formatDateISO)
+                ? window.AppUtils.formatDateISO(monday)
+                : `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+            const endStr = (window.AppUtils && window.AppUtils.formatDateISO)
+                ? window.AppUtils.formatDateISO(sunday)
+                : `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
+
+            const weekInfo = (window.AppUtils && window.AppUtils.getISOWeekNumber)
+                ? window.AppUtils.getISOWeekNumber(weekDays[3] || monday)
+                : { week: 1, year: monday.getFullYear() };
+
+            periodLabel = `Gastos (Semana ${weekInfo.week} · ${weekInfo.year})`;
+            periodTotal = filteredTasks
+                .filter(t => t.amount > 0 && t.startDate <= endStr && t.endDate >= startStr)
+                .reduce((sum, t) => sum + Number(t.amount), 0);
+        } else if (this.state.currentView === 'month') {
             const year = this.state.currentDate.getFullYear();
             const month = this.state.currentDate.getMonth();
             const monthStartStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;

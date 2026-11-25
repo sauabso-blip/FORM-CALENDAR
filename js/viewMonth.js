@@ -94,6 +94,12 @@ class MonthView {
         const grid = document.createElement('div');
         grid.className = 'month-grid';
 
+        // Cabecera de la columna de semana (a la izquierda)
+        const weekHeaderCell = document.createElement('div');
+        weekHeaderCell.className = 'month-header-cell month-week-header-cell';
+        weekHeaderCell.innerHTML = '<span title="Semana del año (1-53)">Sem.</span>';
+        grid.appendChild(weekHeaderCell);
+
         const dayNames = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
         dayNames.forEach(name => {
             const headerCell = document.createElement('div');
@@ -109,10 +115,25 @@ class MonthView {
             return this.state.filters.categories.includes(t.categoryId);
         });
 
-        days.forEach(day => {
-            const cell = this._createDayCell(day, month, filteredTasks);
-            grid.appendChild(cell);
-        });
+        // Agrupar en filas de 7 días para anteponer el número de semana (1 a 53) en cada fila
+        for (let i = 0; i < days.length; i += 7) {
+            const weekDays = days.slice(i, i + 7);
+            const thursday = weekDays[3] || weekDays[0];
+            const dThursday = new Date(thursday.year, thursday.month, thursday.day);
+            const weekInfo = (window.AppUtils && window.AppUtils.getISOWeekNumber)
+                ? window.AppUtils.getISOWeekNumber(dThursday)
+                : { week: 1, year: year };
+
+            const weekCell = document.createElement('div');
+            weekCell.className = 'month-week-number-cell';
+            weekCell.innerHTML = `<span class="week-number-badge" title="Semana ${weekInfo.week} del año ${weekInfo.year}">S${weekInfo.week}</span>`;
+            grid.appendChild(weekCell);
+
+            weekDays.forEach(day => {
+                const cell = this._createDayCell(day, month, filteredTasks);
+                grid.appendChild(cell);
+            });
+        }
 
         this.container.appendChild(grid);
         return this.container;
