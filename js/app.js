@@ -157,6 +157,20 @@ class App {
             }
         });
 
+        // Toggle opciones de aviso (Email / Telegram / Fecha exacta)
+        document.getElementById('task-reminder')?.addEventListener('change', () => {
+            this._updateReminderOptionsUI();
+        });
+        document.getElementById('task-reminder-email')?.addEventListener('change', () => {
+            this._updateReminderOptionsUI();
+        });
+
+        // Toggle opciones de periodicidad / repetición
+        ['task-recurrence-freq', 'task-recurrence-interval', 'task-recurrence-count', 'task-recurrence-until', 'task-start'].forEach(elId => {
+            document.getElementById(elId)?.addEventListener('change', () => this._updateRecurrenceUI());
+            document.getElementById(elId)?.addEventListener('input', () => this._updateRecurrenceUI());
+        });
+
         // Form Submit: Task
         document.getElementById('form-task')?.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -172,12 +186,30 @@ class App {
             const end = document.getElementById('task-end').value;
             const time = document.getElementById('task-time').value;
             const reminder = document.getElementById('task-reminder').value;
+            const reminderCustomAt = document.getElementById('task-reminder-custom-at')?.value || '';
+            const reminderEmail = document.getElementById('task-reminder-email')?.checked ?? true;
+            const reminderTelegram = document.getElementById('task-reminder-telegram')?.checked ?? true;
+            const reminderEmailTo = (document.getElementById('task-reminder-email-to')?.value || '').trim().toLowerCase();
             const amountRaw = document.getElementById('task-amount').value;
             const categoryId = document.getElementById('task-category').value;
             const sharedWithRaw = document.getElementById('task-shared-with')?.value || '';
             const sharedWith = sharedWithRaw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
             const amount = amountRaw !== '' ? parseFloat(amountRaw) : null;
+
+            if (reminder === 'custom' && !reminderCustomAt) {
+                alert('Por favor, selecciona la fecha y hora exacta para el aviso personalizado.');
+                return;
+            }
+
+            const reminderAt = this._computeReminderAt(start, time, reminder, reminderCustomAt);
+            let reminderSent = false;
+            if (idInput.value) {
+                const existingTask = this.store.getTasks().find(t => t.id === idInput.value);
+                if (existingTask && existingTask.reminderSent === true && existingTask.reminderAt === reminderAt) {
+                    reminderSent = true;
+                }
+            }
 
             try {
                 if (submitBtn) submitBtn.disabled = true;
@@ -218,6 +250,14 @@ class App {
                     endDate: end,
                     time: time || '',
                     reminder: reminder || 'none',
+                    reminderAt: reminderAt,
+                    reminderCustomAt: reminder === 'custom' ? reminderCustomAt : '',
+                    reminderChannels: {
+                        email: Boolean(reminderEmail),
+                        telegram: Boolean(reminderTelegram)
+                    },
+                    reminderEmailTo: reminderEmailTo,
+                    reminderSent: reminderSent,
                     amount: (amount !== null && !isNaN(amount)) ? amount : null,
                     categoryId,
                     attachments: uploadedAttachments,
@@ -227,7 +267,20 @@ class App {
                 if (idInput.value) {
                     await this.store.updateTask(idInput.value, taskData);
                 } else {
-                    await this.store.addTask(taskData);
+                    const recFreq = document.getElementById('task-recurrence-freq')?.value || 'none';
+                    if (recFreq !== 'none') {
+                        const recInterval = parseInt(document.getElementById('task-recurrence-interval')?.value || '1', 10) || 1;
+                        const recCount = parseInt(document.getElementById('task-recurrence-count')?.value || '6', 10) || 6;
+                        const recUntil = document.getElementById('task-recurrence-until')?.value || '';
+                        await this.store.addRecurringTasks(taskData, {
+                            freq: recFreq,
+                            interval: recInterval,
+                            count: recUntil ? 0 : recCount,
+                            until: recUntil
+                        });
+                    } else {
+                        await this.store.addTask(taskData);
+                    }
                 }
 
                 e.target.reset();
@@ -280,23 +333,67 @@ class App {
 
             if (this.currentTaskToMove && newDate) {
                 const task = this.currentTaskToMove;
-                const start = new Date(task.startDate);
-                const end = new Date(task.endDate);
-                const duration = end.getTime() - start.getTime();
+                const parseLocal = (s) => {
+                    const [y, m, d] = (s || newDate).split('-').map(Number);
+                    return new Date(y, (m || 1) - 1, d || 1);
+                };
+                const fmtLocal = (d) => {
+                    const y = d.getFullYear();
+                    const m = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${day}`;
+                };
 
-                const newStart = new Date(newDate);
-                const newEnd = new Date(newStart.getTime() + duration);
+                const origStart = parseLocal(task.startDate);
+                const origEnd = parseLocal(task.endDate || task.startDate);
+                const durationDays = Math.max(0, Math.round((origEnd.getTime() - origStart.getTime()) / 86400000));
 
-                const formatDate = d => d.toISOString().split('T')[0];
+                const newStart = parseLocal(newDate);
+                const newEnd = new Date(newStart.getFullYear(), newStart.getMonth(), newStart.getDate() + durationDays);
+                const newStartStr = fmtLocal(newStart);
+                const newEndStr = fmtLocal(newEnd);
 
-                await this.store.updateTask(task.id, {
-                    startDate: formatDate(newStart),
-                    endDate: formatDate(newEnd)
-                });
+                const newReminderAt = this.store.computeReminderAt(
+                    newStartStr,
+                    task.time || '',
+                    task.reminder || 'none',
+                    task.reminderCustomAt || ''
+                );
+
+                if (this.moveModalMode === 'copy') {
+                    const copyData = {
+                        name: task.name || task.description || '',
+                        description: task.description || task.name || '',
+                        comments: task.comments || '',
+                        location: task.location || '',
+                        startDate: newStartStr,
+                        endDate: newEndStr,
+                        time: task.time || '',
+                        reminder: task.reminder || 'none',
+                        reminderAt: newReminderAt,
+                        reminderCustomAt: task.reminder === 'custom' ? (task.reminderCustomAt || '') : '',
+                        reminderChannels: task.reminderChannels ? { ...task.reminderChannels } : { email: true, telegram: true },
+                        reminderEmailTo: task.reminderEmailTo || '',
+                        reminderSent: false,
+                        amount: (task.amount !== null && task.amount !== undefined) ? task.amount : null,
+                        categoryId: task.categoryId || '',
+                        attachments: Array.isArray(task.attachments) ? task.attachments.map(a => ({ ...a })) : [],
+                        sharedWith: Array.isArray(task.sharedWith) ? [...task.sharedWith] : []
+                    };
+                    await this.store.addTask(copyData);
+                } else {
+                    await this.store.updateTask(task.id, {
+                        startDate: newStartStr,
+                        endDate: newEndStr,
+                        reminderAt: newReminderAt,
+                        reminderSent: false
+                    });
+                }
             }
 
             e.target.reset();
             this.currentTaskToMove = null;
+            this.moveModalMode = 'move';
             closeMoveModal();
         });
 
@@ -699,6 +796,10 @@ class App {
         this.attachmentsToDelete = [];
 
         const sharedWithInput = document.getElementById('task-shared-with');
+        const reminderCustomInput = document.getElementById('task-reminder-custom-at');
+        const reminderEmailInput = document.getElementById('task-reminder-email');
+        const reminderTelegramInput = document.getElementById('task-reminder-telegram');
+        const reminderEmailToInput = document.getElementById('task-reminder-email-to');
 
         if (task) {
             title.textContent = 'Editar Entrada';
@@ -711,6 +812,10 @@ class App {
             endInput.value = task.endDate || '';
             timeInput.value = task.time || '';
             reminderInput.value = task.reminder || 'none';
+            if (reminderCustomInput) reminderCustomInput.value = task.reminderCustomAt || '';
+            if (reminderEmailInput) reminderEmailInput.checked = task.reminderChannels ? task.reminderChannels.email !== false : true;
+            if (reminderTelegramInput) reminderTelegramInput.checked = task.reminderChannels ? task.reminderChannels.telegram !== false : true;
+            if (reminderEmailToInput) reminderEmailToInput.value = task.reminderEmailTo || '';
             amountInput.value = (task.amount !== null && task.amount !== undefined) ? task.amount : '';
             if (sharedWithInput) {
                 sharedWithInput.value = Array.isArray(task.sharedWith) ? task.sharedWith.join(', ') : '';
@@ -729,6 +834,10 @@ class App {
             endInput.value = todayStr;
             timeInput.value = '';
             reminderInput.value = 'none';
+            if (reminderCustomInput) reminderCustomInput.value = '';
+            if (reminderEmailInput) reminderEmailInput.checked = true;
+            if (reminderTelegramInput) reminderTelegramInput.checked = true;
+            if (reminderEmailToInput) reminderEmailToInput.value = '';
             amountInput.value = '';
             if (sharedWithInput) {
                 sharedWithInput.value = '';
@@ -736,6 +845,22 @@ class App {
             this.currentAttachments = [];
         }
 
+        const recurrenceSection = document.getElementById('task-recurrence-section');
+        const recFreqInput = document.getElementById('task-recurrence-freq');
+        const recIntervalInput = document.getElementById('task-recurrence-interval');
+        const recCountInput = document.getElementById('task-recurrence-count');
+        const recUntilInput = document.getElementById('task-recurrence-until');
+
+        if (recurrenceSection) {
+            recurrenceSection.style.display = task ? 'none' : 'block';
+        }
+        if (recFreqInput) recFreqInput.value = 'none';
+        if (recIntervalInput) recIntervalInput.value = '1';
+        if (recCountInput) recCountInput.value = '6';
+        if (recUntilInput) recUntilInput.value = '';
+
+        this._updateRecurrenceUI();
+        this._updateReminderOptionsUI();
         this._renderAttachmentsList();
 
         modal.style.display = '';
@@ -749,6 +874,91 @@ class App {
         } else {
             modal.style.display = 'flex';
         }
+    }
+
+    _updateRecurrenceUI() {
+        const freq = document.getElementById('task-recurrence-freq')?.value || 'none';
+        const optionsBox = document.getElementById('task-recurrence-options');
+        const unitLabel = document.getElementById('task-recurrence-unit-label');
+        const previewEl = document.getElementById('task-recurrence-preview');
+        if (!optionsBox) return;
+
+        if (freq === 'none') {
+            optionsBox.style.display = 'none';
+            return;
+        }
+
+        optionsBox.style.display = 'block';
+        const interval = Math.max(1, parseInt(document.getElementById('task-recurrence-interval')?.value || '1', 10) || 1);
+        const count = parseInt(document.getElementById('task-recurrence-count')?.value || '6', 10) || 6;
+        const until = document.getElementById('task-recurrence-until')?.value || '';
+        const startDate = document.getElementById('task-start')?.value || '';
+
+        const unitNames = {
+            days: interval === 1 ? 'día' : 'días',
+            weeks: interval === 1 ? 'semana' : 'semanas',
+            months: interval === 1 ? 'mes' : 'meses'
+        };
+        if (unitLabel) {
+            unitLabel.textContent = freq === 'days' ? 'días' : (freq === 'weeks' ? 'semanas' : 'meses');
+        }
+
+        if (previewEl && startDate && this.store && typeof this.store.generateRecurrenceDates === 'function') {
+            const dates = this.store.generateRecurrenceDates(startDate, startDate, {
+                freq,
+                interval,
+                count: until ? 0 : count,
+                until
+            });
+            const lastDate = dates.length > 0 ? dates[dates.length - 1].startDate : startDate;
+            previewEl.textContent = `Se crearán ${dates.length} entradas (cada ${interval} ${unitNames[freq] || ''}, hasta el ${AppUtils.formatDateDisplay(lastDate)}).`;
+        }
+    }
+
+    _updateReminderOptionsUI() {
+        const reminderVal = document.getElementById('task-reminder')?.value || 'none';
+        const optionsBox = document.getElementById('task-reminder-options');
+        const customRow = document.getElementById('task-reminder-custom-row');
+        const emailCheck = document.getElementById('task-reminder-email');
+        const emailRow = document.getElementById('task-reminder-email-row');
+
+        if (!optionsBox) return;
+
+        if (reminderVal && reminderVal !== 'none') {
+            optionsBox.style.display = 'block';
+            if (customRow) {
+                customRow.style.display = (reminderVal === 'custom') ? 'block' : 'none';
+            }
+            if (emailRow && emailCheck) {
+                emailRow.style.display = emailCheck.checked ? 'block' : 'none';
+            }
+        } else {
+            optionsBox.style.display = 'none';
+        }
+    }
+
+    _computeReminderAt(startDate, time, reminder, customAt) {
+        if (!reminder || reminder === 'none') return null;
+
+        if (reminder === 'custom') {
+            if (!customAt) return null;
+            const dt = new Date(customAt);
+            return isNaN(dt.getTime()) ? null : dt.toISOString();
+        }
+
+        if (!startDate) return null;
+        const effectiveTime = (time && /^\d{2}:\d{2}/.test(time)) ? time : '09:00';
+        const baseDate = new Date(`${startDate}T${effectiveTime}:00`);
+        if (isNaN(baseDate.getTime())) return null;
+
+        const offsetsMs = {
+            'on_time': 0,
+            '15m': 15 * 60 * 1000,
+            '1h': 60 * 60 * 1000,
+            '1d': 24 * 60 * 60 * 1000
+        };
+        const offset = offsetsMs[reminder] ?? 0;
+        return new Date(baseDate.getTime() - offset).toISOString();
     }
 
     _renderAttachmentsList() {
@@ -1158,10 +1368,24 @@ class App {
                 'on_time': 'A la hora del evento',
                 '15m': '15 minutos antes',
                 '1h': '1 hora antes',
-                '1d': '1 día antes'
+                '1d': '1 día antes',
+                'custom': 'Fecha/hora exacta'
             };
-            const remText = reminderMap[task.reminder] || '';
+            let remText = reminderMap[task.reminder] || '';
             if (remText) {
+                if (task.reminder === 'custom' && task.reminderCustomAt) {
+                    remText = task.reminderCustomAt.replace('T', ' ');
+                }
+                const channels = [];
+                const ch = task.reminderChannels || { email: true, telegram: true };
+                if (ch.email !== false) channels.push('📧 Email');
+                if (ch.telegram !== false) channels.push('✈️ Telegram');
+                if (channels.length > 0) {
+                    remText += ` (${channels.join(' + ')})`;
+                }
+                if (task.reminderSent) {
+                    remText += ' · ✅ Enviado';
+                }
                 reminderEl.textContent = remText;
                 reminderRow.style.display = 'flex';
             } else {
@@ -1317,7 +1541,8 @@ class App {
         const options = [
             { label: '✏️ Editar entrada', action: () => this._showTaskModal(task) },
             { label: '👥 Compartir esta tarea...', action: () => this._promptShareSingleTask(task) },
-            { label: '🔄 Mover a otra fecha...', action: () => this._showMoveTaskModal(task) },
+            { label: '🔄 Mover a otra fecha...', action: () => this._showMoveTaskModal(task, 'move') },
+            { label: '📋 Copiar en...', action: () => this._showMoveTaskModal(task, 'copy') },
             { label: '🗑️ Eliminar', action: () => this._confirmDeleteTask(task) }
         ];
 
@@ -1334,8 +1559,8 @@ class App {
         });
 
         // Ensure menu doesn't overflow mobile viewport
-        const menuWidth = 200;
-        const menuHeight = 140;
+        const menuWidth = 210;
+        const menuHeight = 185;
         const x = Math.max(10, Math.min(e.pageX, window.innerWidth - menuWidth - 15));
         const y = Math.max(10, Math.min(e.pageY, window.innerHeight - menuHeight - 15));
 
@@ -1376,10 +1601,28 @@ class App {
         }
     }
 
-    _showMoveTaskModal(task) {
+    _showMoveTaskModal(task, mode = 'move') {
         this.currentTaskToMove = task;
+        this.moveModalMode = mode;
         const modal = document.getElementById('modal-move-task');
         const input = document.getElementById('move-task-date');
+        const titleEl = document.getElementById('move-modal-title');
+        const descEl = document.getElementById('move-modal-desc');
+        const labelEl = document.getElementById('move-modal-date-label');
+        const submitEl = document.getElementById('btn-submit-move');
+
+        if (mode === 'copy') {
+            if (titleEl) titleEl.textContent = 'Copiar Entrada';
+            if (descEl) descEl.textContent = `Selecciona la fecha en la que empezará la copia de "${task.name}". Se mantendrá la duración y los detalles.`;
+            if (labelEl) labelEl.textContent = 'Fecha de inicio para la copia';
+            if (submitEl) submitEl.textContent = 'Copiar';
+        } else {
+            if (titleEl) titleEl.textContent = 'Mover Entrada';
+            if (descEl) descEl.textContent = 'Selecciona la nueva fecha de inicio. La duración se mantendrá.';
+            if (labelEl) labelEl.textContent = 'Nueva Fecha de Inicio';
+            if (submitEl) submitEl.textContent = 'Mover';
+        }
+
         input.value = task.startDate;
 
         modal.style.display = '';

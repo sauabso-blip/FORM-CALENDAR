@@ -388,7 +388,8 @@ class WeekView {
             'on_time': 'A la hora del evento',
             '15m': '15 min antes',
             '1h': '1 hora antes',
-            '1d': '1 día antes'
+            '1d': '1 día antes',
+            'custom': 'Fecha/hora exacta'
         };
         return map[reminder] || '';
     }

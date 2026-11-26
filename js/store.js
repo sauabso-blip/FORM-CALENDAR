@@ -185,6 +185,11 @@ const store = {
                     amount: (data.amount !== undefined && data.amount !== null && data.amount !== '') ? Number(data.amount) : null,
                     time: data.time || '',
                     reminder: data.reminder || 'none',
+                    reminderAt: data.reminderAt || null,
+                    reminderCustomAt: data.reminderCustomAt || '',
+                    reminderChannels: data.reminderChannels || { email: true, telegram: true },
+                    reminderEmailTo: data.reminderEmailTo || '',
+                    reminderSent: Boolean(data.reminderSent),
                     attachments: Array.isArray(data.attachments) ? data.attachments : [],
                     sharedWith: Array.isArray(data.sharedWith) ? data.sharedWith : []
                 };
@@ -485,7 +490,15 @@ const store = {
                 for (const att of task.attachments) {
                     const fileTarget = att.fileId || att.path;
                     if (fileTarget) {
-                        try { await this.deleteAttachmentFile(fileTarget); } catch (e) { }
+                        // Evitar borrar el archivo si otra tarea (ej. una copia) sigue usándolo
+                        const usedElsewhere = this.state.tasks.some(
+                            other => other.id !== taskId &&
+                            Array.isArray(other.attachments) &&
+                            other.attachments.some(a => (a.fileId || a.path) === fileTarget)
+                        );
+                        if (!usedElsewhere) {
+                            try { await this.deleteAttachmentFile(fileTarget); } catch (e) { }
+                        }
                     }
                 }
             }
@@ -496,6 +509,143 @@ const store = {
             this._saveLocalTasks();
             this._notify();
         }
+    },
+
+    // --- Utilidades de Recordatorios y Periodicidad ---
+    computeReminderAt(startDate, time, reminder, customAt = '') {
+        if (!reminder || reminder === 'none') return null;
+
+        if (reminder === 'custom') {
+            if (!customAt) return null;
+            const dt = new Date(customAt);
+            return isNaN(dt.getTime()) ? null : dt.toISOString();
+        }
+
+        if (!startDate) return null;
+        const effectiveTime = (time && /^\d{2}:\d{2}/.test(time)) ? time : '09:00';
+        const baseDate = new Date(`${startDate}T${effectiveTime}:00`);
+        if (isNaN(baseDate.getTime())) return null;
+
+        const offsetsMs = {
+            'on_time': 0,
+            '15m': 15 * 60 * 1000,
+            '1h': 60 * 60 * 1000,
+            '1d': 24 * 60 * 60 * 1000
+        };
+        const offset = offsetsMs[reminder] ?? 0;
+        return new Date(baseDate.getTime() - offset).toISOString();
+    },
+
+    normalizeRecurrenceFreq(rawFreq) {
+        if (!rawFreq) return 'none';
+        const f = String(rawFreq).toLowerCase().trim();
+        if (['days', 'day', 'dia', 'días', 'dias', 'daily', 'diario', 'diaria'].includes(f)) return 'days';
+        if (['weeks', 'week', 'semana', 'semanas', 'weekly', 'semanal'].includes(f)) return 'weeks';
+        if (['months', 'month', 'mes', 'meses', 'monthly', 'mensual'].includes(f)) return 'months';
+        return 'none';
+    },
+
+    generateRecurrenceDates(startDateStr, endDateStr, recurrence) {
+        const freq = this.normalizeRecurrenceFreq(recurrence?.freq || recurrence?.frequency || recurrence?.frecuencia);
+        if (freq === 'none' || !startDateStr) {
+            return [{ startDate: startDateStr, endDate: endDateStr || startDateStr }];
+        }
+
+        const interval = Math.max(1, parseInt(recurrence?.interval || recurrence?.cada || 1, 10) || 1);
+        const untilStr = recurrence?.until || recurrence?.untilDate || recurrence?.hasta || '';
+        const rawCount = parseInt(recurrence?.count || recurrence?.repeticiones || recurrence?.veces || 0, 10);
+        const MAX_OCCURRENCES = 60;
+
+        // Si se indica "until" sin count, generamos hasta esa fecha (con tope de 60)
+        // Si no se indica ni until ni count, por defecto 6 repeticiones
+        const targetCount = untilStr
+            ? (rawCount > 0 ? Math.min(rawCount, MAX_OCCURRENCES) : MAX_OCCURRENCES)
+            : Math.min(Math.max(rawCount || 6, 1), MAX_OCCURRENCES);
+
+        const parseLocal = (s) => {
+            const [y, m, d] = s.split('-').map(Number);
+            return new Date(y, (m || 1) - 1, d || 1);
+        };
+        const fmtLocal = (d) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+
+        const baseStart = parseLocal(startDateStr);
+        const baseEnd = endDateStr ? parseLocal(endDateStr) : new Date(baseStart.getTime());
+        const durationDays = Math.max(0, Math.round((baseEnd.getTime() - baseStart.getTime()) / 86400000));
+        const untilDate = untilStr ? parseLocal(untilStr) : null;
+
+        const results = [];
+        for (let i = 0; i < targetCount; i++) {
+            let occStart;
+            if (freq === 'days') {
+                occStart = new Date(baseStart.getFullYear(), baseStart.getMonth(), baseStart.getDate() + (i * interval));
+            } else if (freq === 'weeks') {
+                occStart = new Date(baseStart.getFullYear(), baseStart.getMonth(), baseStart.getDate() + (i * interval * 7));
+            } else if (freq === 'months') {
+                // Suma segura de meses sin desbordar fin de mes (ej: 31 Ene -> 28 Feb -> 31 Mar)
+                const targetMonthIndex = baseStart.getMonth() + (i * interval);
+                const targetYear = baseStart.getFullYear() + Math.floor(targetMonthIndex / 12);
+                const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+                const maxDayInMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+                const day = Math.min(baseStart.getDate(), maxDayInMonth);
+                occStart = new Date(targetYear, normalizedMonth, day);
+            }
+
+            if (untilDate && occStart.getTime() > untilDate.getTime()) {
+                break;
+            }
+
+            const occEnd = new Date(occStart.getFullYear(), occStart.getMonth(), occStart.getDate() + durationDays);
+            results.push({
+                startDate: fmtLocal(occStart),
+                endDate: fmtLocal(occEnd)
+            });
+        }
+
+        return results.length > 0 ? results : [{ startDate: startDateStr, endDate: endDateStr || startDateStr }];
+    },
+
+    async addRecurringTasks(baseTaskData, recurrence) {
+        const freq = this.normalizeRecurrenceFreq(recurrence?.freq || recurrence?.frequency || recurrence?.frecuencia);
+        const interval = Math.max(1, parseInt(recurrence?.interval || recurrence?.cada || 1, 10) || 1);
+        const datesList = this.generateRecurrenceDates(baseTaskData.startDate, baseTaskData.endDate, recurrence);
+
+        const groupId = datesList.length > 1
+            ? ('rec_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6))
+            : null;
+
+        const createdTasks = [];
+        for (let i = 0; i < datesList.length; i++) {
+            const { startDate, endDate } = datesList[i];
+            const remType = baseTaskData.reminder || 'none';
+            const computedReminderAt = (remType === 'custom' && i > 0)
+                ? this.computeReminderAt(startDate, baseTaskData.time, 'on_time')
+                : this.computeReminderAt(startDate, baseTaskData.time, remType, baseTaskData.reminderCustomAt || '');
+
+            const itemData = {
+                ...baseTaskData,
+                startDate,
+                endDate,
+                reminderAt: computedReminderAt,
+                reminderSent: false,
+                recurrenceGroupId: groupId,
+                recurrence: groupId ? {
+                    freq,
+                    interval,
+                    index: i + 1,
+                    total: datesList.length
+                } : null
+            };
+
+            const newId = await this.addTask(itemData);
+            createdTasks.push({ id: newId, ...itemData });
+        }
+
+        return { groupId, createdTasks };
     },
 
     // --- Métodos para Adjuntos (Opción A: Almacenamiento en Firestore) ---

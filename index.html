@@ -384,11 +384,67 @@
                         <option value="15m">15 minutos antes</option>
                         <option value="1h">1 hora antes</option>
                         <option value="1d">1 día antes</option>
+                        <option value="custom">Fecha y hora exacta...</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label for="task-amount">Importe (€) <span style="font-weight:normal; color:var(--text-muted);">(Opcional)</span></label>
                     <input type="number" id="task-amount" step="0.01" min="0" placeholder="0.00">
+                </div>
+            </div>
+
+            <div id="task-reminder-options" class="form-group" style="display: none; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 0.75rem;">
+                <div style="font-weight: 600; font-size: 0.85rem; color: #92400e; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
+                    <span>🔔</span> Configuración del Aviso (Móvil y PC)
+                </div>
+                <div id="task-reminder-custom-row" style="display: none; margin-bottom: 0.6rem;">
+                    <label for="task-reminder-custom-at" style="font-size: 0.8rem; color: var(--text-main);">Fecha y hora exacta del aviso</label>
+                    <input type="datetime-local" id="task-reminder-custom-at" style="width: 100%; margin-top: 2px;">
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.5rem;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 500; margin: 0;">
+                        <input type="checkbox" id="task-reminder-email" checked style="width: auto; margin: 0;">
+                        <span>📧 Enviar por Email (Gmail)</span>
+                    </label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 500; margin: 0;">
+                        <input type="checkbox" id="task-reminder-telegram" checked style="width: auto; margin: 0;">
+                        <span>✈️ Push en Móvil y PC (Telegram)</span>
+                    </label>
+                </div>
+                <div id="task-reminder-email-row" style="margin-top: 0.35rem;">
+                    <input type="email" id="task-reminder-email-to" placeholder="Correo destino (opcional; por defecto usa el tuyo)" style="width: 100%; padding: 0.4rem 0.6rem; font-size: 0.82rem;">
+                </div>
+                <small style="display: block; margin-top: 0.4rem; color: #b45309; font-size: 0.76rem;">
+                    Si la tarea no tiene hora fijada, los avisos relativos se envían a las 09:00.
+                </small>
+            </div>
+
+            <div id="task-recurrence-section" class="form-group" style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 0.75rem;">
+                <label for="task-recurrence-freq" style="display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; color: #0369a1;">
+                    <span>🔁</span> Periodicidad / Repetición
+                </label>
+                <select id="task-recurrence-freq" style="margin-top: 4px;">
+                    <option value="none">Sin repetición (entrada única)</option>
+                    <option value="days">Repetir cada X días</option>
+                    <option value="weeks">Repetir cada X semanas</option>
+                    <option value="months">Repetir cada X meses</option>
+                </select>
+                <div id="task-recurrence-options" style="display: none; margin-top: 0.6rem;">
+                    <div class="form-row" style="gap: 0.6rem;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="task-recurrence-interval" style="font-size: 0.8rem;">Cada (<span id="task-recurrence-unit-label">semanas</span>)</label>
+                            <input type="number" id="task-recurrence-interval" min="1" max="365" value="1">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="task-recurrence-count" style="font-size: 0.8rem;">Nº repeticiones</label>
+                            <input type="number" id="task-recurrence-count" min="2" max="60" value="6">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="task-recurrence-until" style="font-size: 0.8rem;">O hasta fecha (opc.)</label>
+                            <input type="date" id="task-recurrence-until">
+                        </div>
+                    </div>
+                    <small id="task-recurrence-preview" style="display: block; margin-top: 0.45rem; color: #0369a1; font-size: 0.78rem;"></small>
                 </div>
             </div>
 
@@ -449,20 +505,20 @@
         </form>
     </dialog>
 
-    <!-- Modal: Move Task -->
+    <!-- Modal: Move / Copy Task -->
     <dialog id="modal-move-task" class="modal">
         <form id="form-move-task">
-            <h2>Mover Entrada</h2>
-            <p>Selecciona la nueva fecha de inicio. La duración se mantendrá.</p>
+            <h2 id="move-modal-title">Mover Entrada</h2>
+            <p id="move-modal-desc">Selecciona la nueva fecha de inicio. La duración se mantendrá.</p>
 
             <div class="form-group">
-                <label for="move-task-date">Nueva Fecha de Inicio</label>
+                <label for="move-task-date" id="move-modal-date-label">Nueva Fecha de Inicio</label>
                 <input type="date" id="move-task-date" required>
             </div>
 
             <div class="modal-actions">
                 <button type="button" class="btn btn-text" id="btn-cancel-move">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Mover</button>
+                <button type="submit" class="btn btn-primary" id="btn-submit-move">Mover</button>
             </div>
         </form>
     </dialog>
@@ -593,15 +649,15 @@
     <script src="./js/firebaseConfig.js"></script>
 
     <!-- App Scripts -->
-    <script src="./js/utils.js?v=24"></script>
-    <script src="./js/auth.js?v=24"></script>
-    <script src="./js/admin.js?v=24"></script>
-    <script src="./js/store.js?v=24"></script>
-    <script src="./js/aiAssistant.js?v=24"></script>
-    <script src="./js/viewYear.js?v=24"></script>
-    <script src="./js/viewMonth.js?v=24"></script>
-    <script src="./js/viewWeek.js?v=24"></script>
-    <script src="./js/app.js?v=24"></script>
+    <script src="./js/utils.js?v=26"></script>
+    <script src="./js/auth.js?v=26"></script>
+    <script src="./js/admin.js?v=26"></script>
+    <script src="./js/store.js?v=26"></script>
+    <script src="./js/aiAssistant.js?v=26"></script>
+    <script src="./js/viewYear.js?v=26"></script>
+    <script src="./js/viewMonth.js?v=26"></script>
+    <script src="./js/viewWeek.js?v=26"></script>
+    <script src="./js/app.js?v=26"></script>
 </body>
 
 </html>

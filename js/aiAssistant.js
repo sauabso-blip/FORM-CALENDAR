@@ -510,7 +510,7 @@ REGLAS FUNDAMENTALES:
 
 FORMATOS DE ACCIÓN PERMITIDOS:
 
-A) CREAR / AÑADIR:
+A) CREAR / AÑADIR (soporta entradas únicas Y TAREAS PERIÓDICAS / RECURRENTES):
 \`\`\`json
 {
   "action": "create_task",
@@ -521,10 +521,24 @@ A) CREAR / AÑADIR:
     "endDate": "YYYY-MM-DD",
     "time": "HH:MM o null",
     "reminder": "none | on_time | 15m | 1h | 1d",
-    "amount": 35.50 o null
+    "amount": 35.50 o null,
+    "recurrence": {
+      "freq": "days | weeks | months",
+      "interval": 1,
+      "count": 6,
+      "until": "YYYY-MM-DD (opcional)"
+    }
   }
 }
 \`\`\`
+NOTA IMPORTANTE SOBRE PERIODICIDAD:
+- SÍ ESTÁS PREPARADO para crear tareas periódicas/recurrentes automáticamente. NUNCA digas que no puedes crear tareas periódicas.
+- Si el usuario pide repetir una tarea cada X días, semanas o meses, incluye el objeto "recurrence" con:
+  * "freq": "days" (días), "weeks" (semanas) o "months" (meses).
+  * "interval": cada cuántos días/semanas/meses (ej. 1 para semanal/mensual, 2 para cada 2 semanas).
+  * "count": número total de repeticiones (si el usuario dice "durante 4 semanas" -> 4; si no especifica cuántas ni fecha fin, usa 6 por defecto, o 12 si dice "todo el año").
+  * "until": fecha límite "YYYY-MM-DD" si el usuario indica "hasta el...".
+- Si la tarea NO es periódica, omite el campo "recurrence".
 
 B) ELIMINAR / BORRAR:
 Busca la tarea en la lista de arriba y pon su "taskId" y su "name":
@@ -811,23 +825,57 @@ EJEMPLOS DE COMPORTAMIENTO:
             // CREATE
             if (actionType.includes('create') || actionType.includes('add') || actionType.includes('añadir')) {
                 try {
+                    const startDate = this._normalizeDate(data.startDate || data.start_date || data.inicio || data.fechaInicio) || new Date().toISOString().split('T')[0];
+                    const endDate = this._normalizeDate(data.endDate || data.end_date || data.fin || data.fechaFin || data.startDate || data.inicio) || startDate;
+                    const time = data.time || data.hora || '';
+                    const reminder = data.reminder || data.aviso || 'none';
+
                     const taskData = {
                         name: data.name || data.titulo || data.title || 'Nueva tarea',
                         description: data.name || data.titulo || data.title || 'Nueva tarea',
                         categoryId: data.categoryId || this.store.getCategories()[0]?.id || '',
-                        startDate: this._normalizeDate(data.startDate || data.start_date || data.inicio || data.fechaInicio) || new Date().toISOString().split('T')[0],
-                        endDate: this._normalizeDate(data.endDate || data.end_date || data.fin || data.fechaFin || data.startDate || data.inicio) || new Date().toISOString().split('T')[0],
-                        time: data.time || data.hora || '',
-                        reminder: data.reminder || data.aviso || 'none',
+                        startDate,
+                        endDate,
+                        time,
+                        reminder,
+                        reminderAt: this.store.computeReminderAt ? this.store.computeReminderAt(startDate, time, reminder) : null,
+                        reminderChannels: { email: true, telegram: true },
+                        reminderEmailTo: '',
+                        reminderSent: false,
                         amount: (data.amount !== undefined && data.amount !== null) ? Number(data.amount) : null,
                         location: data.location || data.lugar || '',
                         comments: data.comments || data.notas || '',
                         attachments: []
                     };
 
-                    const newId = await this.store.addTask(taskData);
-                    createdTask = { id: newId, ...taskData };
-                    this.lastReferencedTaskId = newId;
+                    const rawRec = data.recurrence || data.periodicidad || data.repeat || (data.freq ? { freq: data.freq, interval: data.interval, count: data.count, until: data.until } : null);
+                    const normalizedFreq = (rawRec && this.store.normalizeRecurrenceFreq)
+                        ? this.store.normalizeRecurrenceFreq(rawRec.freq || rawRec.frequency || rawRec.frecuencia)
+                        : 'none';
+
+                    if (normalizedFreq !== 'none' && typeof this.store.addRecurringTasks === 'function') {
+                        const recSpec = {
+                            freq: normalizedFreq,
+                            interval: rawRec.interval || rawRec.cada || 1,
+                            count: rawRec.count || rawRec.repeticiones || rawRec.veces || 0,
+                            until: rawRec.until ? this._normalizeDate(rawRec.until) : (rawRec.hasta ? this._normalizeDate(rawRec.hasta) : '')
+                        };
+                        const { createdTasks } = await this.store.addRecurringTasks(taskData, recSpec);
+                        const first = createdTasks[0];
+                        const last = createdTasks[createdTasks.length - 1];
+                        createdTask = {
+                            ...first,
+                            _recurrenceCount: createdTasks.length,
+                            _recurrenceLastDate: last ? last.startDate : first.startDate,
+                            _recurrenceFreq: normalizedFreq,
+                            _recurrenceInterval: Math.max(1, parseInt(recSpec.interval, 10) || 1)
+                        };
+                        this.lastReferencedTaskId = first ? first.id : null;
+                    } else {
+                        const newId = await this.store.addTask(taskData);
+                        createdTask = { id: newId, ...taskData };
+                        this.lastReferencedTaskId = newId;
+                    }
 
                     if (window._appInstance) {
                         window._appInstance.render();
@@ -932,12 +980,16 @@ EJEMPLOS DE COMPORTAMIENTO:
             if (createdTask.time) extraInfo += ` ⏰ ${createdTask.time}`;
             if (createdTask.reminder && createdTask.reminder !== 'none') extraInfo += ` 🔔`;
 
+            const dateLabel = (createdTask._recurrenceCount && createdTask._recurrenceCount > 1)
+                ? `🔁 ${createdTask._recurrenceCount}x (${createdTask.startDate} → ${createdTask._recurrenceLastDate})`
+                : `📅 ${createdTask.startDate}`;
+
             card.innerHTML = `
                 <div class="ai-action-card-header">
                     <span class="ai-action-badge" style="background:${category ? category.color : '#3b82f6'};">
                         ${category ? category.name : 'Entrada'}
                     </span>
-                    <span class="ai-action-dates">📅 ${createdTask.startDate}</span>
+                    <span class="ai-action-dates">${dateLabel}</span>
                 </div>
                 <div class="ai-action-title">✅ ${createdTask.name}${extraInfo}</div>
             `;
